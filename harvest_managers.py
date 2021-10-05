@@ -18,11 +18,11 @@ class ZipHarvestStore:
 
     def __init__(
         self,
-        harvest_dir,
+        harvest_dir=None,
         archive_prefix=cst.ARCHIVE_PREFIX,
         max_archive_size=cst.MAX_ARCHIVE_SIZE,
     ):
-        self.harvest_dir = harvest_dir
+        self.harvest_dir = harvest_dir or os.getcwd()
         self.archive_prefix = archive_prefix
         self.max_archive_size = max_archive_size
         self.archive_count = 1

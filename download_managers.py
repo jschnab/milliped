@@ -47,13 +47,16 @@ class SimpleDownloadManager:
         else:
             self.user_agent = None
         self.proxies = proxies
+        self.current_proxy = None
+        if self.proxies:
+            self.current_proxy = self.proxies.pop()
         self.timeout = timeout
         self.session = self.get_session()
 
         self.robot_parser = RobotParser(self.base_url, self.user_agent)
         self.request_delay = request_delay or self.robot_parser.request_delay
 
-        logging.info(f"using proxies: {self.proxies}")
+        logging.info(f"using proxies: {self.current_proxy}")
         logging.info(f"using headers: {self.headers}")
 
     def download_page(self, url):
@@ -68,13 +71,16 @@ class SimpleDownloadManager:
             response = self.session.get(
                 url,
                 headers=self.headers,
-                proxies=self.proxies,
+                proxies=self.current_proxy,
                 timeout=self.timeout,
             )
             return response.content
 
         except RequestException:
             logging.error(f"failed to download {cut_url(url)}")
+            if self.proxies:
+                self.current_proxy = self.proxies.pop()
+                logging.info(f"now using proxy: {self.current_proxy}")
 
     def get_session(self):
         session = requests.Session()
