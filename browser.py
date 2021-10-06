@@ -13,6 +13,35 @@ from utils import cut_url
 
 
 class Browser:
+    """
+    Automated web browser.
+
+    :param str base_url: URL of the website to browse.
+    :param callable stop_test: Function to determine if we should stop
+        browsing.
+    :param callable get_browsable: Function which returns the URL
+        of the next page to browse.
+    :param callable get_harvestable: Function which returns the URL
+        of the next page to harvest.
+    :param callable get_page_id: Function which shortens the URL into a
+        unique ID, this is used when saving harvested pages.
+    :param class explored_set: Object to store a set of explored web pages.
+    :param class browse_queue: Object to store a queue of web pages to
+        browse.
+    :param class harvest_queue: Object to store a queue of web pages to
+        parse.
+    :param object download_manager: Object to manage downloading web pages.
+    :param str html_parser: Parser to use with BeautifulSoup, e.g.
+        'html.parser', 'lxml', etc.
+    :param soup_parser: Function to use to parse the HTML tags soup into
+        a dictionary.
+    :param object harvest_store: Object to manage storage of downloaded
+        web pages.
+    :param object extract_store: Object to manage storage of extracted
+        data from parsed web pages.
+    :param str log_path: Path where to log browser activity.
+    """
+
     def __init__(
         self,
         base_url,
@@ -20,7 +49,6 @@ class Browser:
         get_browsable=None,
         get_harvestable=None,
         get_page_id=None,
-        config_path=cst.DEFAULT_CONFIG,
         explored_set=None,
         browse_queue=None,
         harvest_queue=None,
@@ -29,37 +57,8 @@ class Browser:
         soup_parser=None,
         harvest_store=None,
         extract_store=None,
+        log_path=cst.LOG_PATH,
     ):
-        """
-        Automated web browser.
-
-        :param str base_url: URL where to start browsing
-        :param callable stop_test: function to determine if we should stop
-            browsing
-        :param callable get_browsable: function which returns the URL
-            of the next page to browse
-        :param callable get_harvestable: function which returns the URL
-            of the next page to harvest
-        :param callable get_page_id: function which shortens the URL into a
-            unique ID
-        :param str html_parser: parser to use with BeautifulSoup, e.g.
-            'html.parser', 'lxml', etc
-        :param soup_parser: function to use to parse the HTML tags soup into
-            a dictionary
-        :param str config_path: path to the browser configuration file
-        :param class explored_set: Object to store a set of explored web pages.
-            Must have methods named 'add' and '__contains__'.
-        :param class browse_queue: Object to store a queue of web pages to
-            browse. This must have methods named 'enqueue' and 'dequeue'.
-        :param class parse_queue: Object to store a queue of web pages to
-            parse. This must have methods named 'enqueue' and 'dequeue'.
-        :param object download_manager: Object to manage downloading web pages.
-        :param object harvest_store: Object to manage storage of downloaded
-            web pages.
-        :param object extract_store: Object to manage storage of extracted
-            data from parsed web pages.
-        """
-        self.configure(config_path)
         self.base_url = base_url
         self.stop_test = stop_test
         self.get_browsable = get_browsable
@@ -72,6 +71,7 @@ class Browser:
         self.download_manager = download_manager
         self.harvest_store = harvest_store
         self.extract_store = extract_store
+        self.log_path = log_path
         self.archive_count = 1
         self.pauses = 0
 
@@ -80,23 +80,10 @@ class Browser:
         else:
             self.html_parser = partial(BeautifulSoup, features=html_parser)
 
-    def configure(self, config_path):
-        """
-        Read and apply the configuration.
-
-        :param str config_path: path to the configuration file
-        """
-        if Path(config_path).exists():
-            config = ConfigParser()
-            config.read(config_path)
-            log_file = config["logging"]["log_file"]
-        else:
-            log_file = "browser.log"
-
         logging.basicConfig(
             format="%(asctime)s %(levelname)s %(message)s",
             level=logging.INFO,
-            filename=log_file,
+            filename=self.log_path,
             filemode="a"
         )
 
@@ -114,8 +101,8 @@ class Browser:
 
     def browse(self, initial=None):
         """
-        Crawl the web in a breadth-first search fashion, find pages to extract
-        and store them in self.harvest_queue.
+        Browse a website in a breadth-first search fashion, find pages to
+        extract and store them in self.harvest_queue.
 
         :param str initial: URL where to start browsing (suffix to append
             to the base URL)
@@ -177,7 +164,8 @@ class Browser:
 
     def harvest(self):
         """
-        Download the web pages stored in self.harvest_queue and save the data.
+        Download the web pages stored in self.harvest_queue and save the data
+        in the harvest store.
         """
         logging.info("start harvesting")
 
@@ -212,8 +200,8 @@ class Browser:
 
     def extract(self):
         """
-        Extract data from HTML pages stored in an archive and saves it as a
-        CSV file.
+        Extract data from HTML pages stored in the harvest store and save it
+        with the extract store.
         """
         logging.info("start extracting")
 

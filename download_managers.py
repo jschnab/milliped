@@ -3,6 +3,8 @@ import os
 import random
 import time
 
+from urllib.parse import urljoin, urlparse
+
 import requests
 
 from requests.adapters import HTTPAdapter
@@ -10,7 +12,6 @@ from requests.exceptions import RequestException
 from requests.packages.urllib3.util.retry import Retry
 from selenium import webdriver
 from stem.util.log import get_logger
-from urllib.parse import urljoin, urlparse
 
 import constants as cst
 
@@ -25,6 +26,19 @@ stem_logger.propagate = False
 class SimpleDownloadManager:
     """
     Simply uses the 'requests' Python library to download web pages.
+
+    :param str base_url: URL of the website to browse.
+    :param int max_retries: Maximum number of times a request for a web page
+        is made before failing.
+    :param float backoff_factor: Backoff factor for exponential decay.
+    :param sequence retry_on: HTTP status code of responses that lead to a
+        request retry.
+    :param dict headers: Request headers.
+    :param list proxies: List of proxies.
+    :param float timeout: Timeout for requests.
+    :param float request_delay: Time to wait between requests. This value
+        will be searched in robots.txt but will default to the user-defined
+        value.
     """
     def __init__(
         self,
@@ -51,15 +65,22 @@ class SimpleDownloadManager:
         if self.proxies:
             self.current_proxy = self.proxies.pop()
         self.timeout = timeout
-        self.session = self.get_session()
+        self.get_session()
 
         self.robot_parser = RobotParser(self.base_url, self.user_agent)
-        self.request_delay = request_delay or self.robot_parser.request_delay
+        self.request_delay = self.robot_parser.request_delay or request_delay
 
         logging.info(f"using proxies: {self.current_proxy}")
         logging.info(f"using headers: {self.headers}")
 
     def download_page(self, url):
+        """
+        Download a web page.
+
+        :param str url: URL of the page to download.
+        :returns (str): Contents of the web page or 'forbidden' if this page
+            should not be programmatically downloaded, according to robots.txt.
+        """
         if not url.startswith(self.base_url):
             url = urljoin(self.base_url, url)
 
@@ -83,6 +104,9 @@ class SimpleDownloadManager:
                 logging.info(f"now using proxy: {self.current_proxy}")
 
     def get_session(self):
+        """
+        Create and configure a session object to make web requests.
+        """
         session = requests.Session()
 
         retry = Retry(
@@ -96,15 +120,33 @@ class SimpleDownloadManager:
         adapter = HTTPAdapter(max_retries=retry)
         session.mount("http://", adapter)
         session.mount("https://", adapter)
-        return session
+        self.session = session
 
     def sleep(self):
+        """
+        Pause the browser by the number of seconds defined in
+        self.request_delay.
+        """
         time.sleep(self.request_delay)
 
 
 class TorDownloadManager:
     """
     Download web pages using Tor.
+
+    :param str base_url: URL of the website to browse.
+    :param int max_retries: Maximum number of times a request for a web page
+        is made before failing.
+    :param float backoff_factor: Backoff factor for exponential decay.
+    :param sequence retry_on: HTTP status code of responses that lead to a
+        request retry.
+    :param dict headers: Request headers.
+    :param list proxies: List of proxies.
+    :param float timeout: Timeout for requests.
+    :param float request_delay: Time to wait between requests. This value
+        will be searched in robots.txt but will default to the user-defined
+        value.
+    :param str tor_password: Password for the Tor application.
     """
     def __init__(
         self,
@@ -141,6 +183,13 @@ class TorDownloadManager:
         logging.info(f"using proxies: {self.headers}")
 
     def download_page(self, url):
+        """
+        Download a web page.
+
+        :param str url: URL of the page to download.
+        :returns (str): Contents of the web page or 'forbidden' if this page
+            should not be programmatically downloaded, according to robots.txt.
+        """
         if self.max_requests != 0 and self.n_requests == self.max_requests:
             logging.info(
                 "reached max number of requests for single session, "
@@ -169,6 +218,9 @@ class TorDownloadManager:
             logging.error(f"failed to download {cut_url(url)}")
 
     def get_session(self):
+        """
+        Create and configure a session object to make web requests.
+        """
         self.n_requests = 0
         # new IP only after reset_identity() is called and new session is made
         logging.info("making a Tor session")
@@ -191,6 +243,10 @@ class TorDownloadManager:
         return session
 
     def sleep(self):
+        """
+        Pause the browser by the number of seconds defined in
+        self.request_delay.
+        """
         time.sleep(self.request_delay)
 
 
@@ -198,6 +254,19 @@ class FirefoxDownloadManager:
     """
     Download web pages using the Python library selenium and the Firefox
     webdriver (geckodriver).
+
+    :param str base_url: URL of the website to browse.
+    :param int max_retries: Maximum number of times a request for a web page
+        is made before failing.
+    :param float wait_page_load: Number of seconds to wait for a page to load
+        before downloading its contents.
+    :param dict headers: Request headers.
+    :param list proxies: List of proxies.
+    :param str driver_path: Path to the Geckodriver executable.
+    :param str log_path: Path of the file where to log activity.
+    :param float request_delay: Time to wait between requests. This value
+        will be searched in robots.txt but will default to the user-defined
+        value.
     """
     def __init__(
         self,
@@ -240,6 +309,13 @@ class FirefoxDownloadManager:
         return self.session.page_source
 
     def download_page(self, url):
+        """
+        Download a web page.
+
+        :param str url: URL of the page to download.
+        :returns (str): Contents of the web page or 'forbidden' if this page
+            should not be programmatically downloaded, according to robots.txt.
+        """
         if not url.startswith(self.base_url):
             url = urljoin(self.base_url, url)
 
@@ -258,6 +334,9 @@ class FirefoxDownloadManager:
         logging.error(f"too many retries downloading {cut_url(url)}")
 
     def get_session(self):
+        """
+        Create and configure a session object to make web requests.
+        """
         https_proxy = urlparse(self.proxies.get("https")).netloc
         http_proxy = urlparse(self.proxies.get("http")).netloc or https_proxy
         webdriver.DesiredCapabilities.FIREFOX["proxy"] = {
@@ -287,4 +366,8 @@ class FirefoxDownloadManager:
         return session
 
     def sleep(self):
+        """
+        Pause the browser by the number of seconds defined in
+        self.request_delay.
+        """
         time.sleep(self.request_delay)

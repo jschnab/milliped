@@ -4,6 +4,7 @@ from pathlib import Path
 
 CONFIG_DIR = os.path.join(str(Path.home()), ".browsing")
 DEFAULT_CONFIG = os.path.join(CONFIG_DIR, "browser.conf")
+LOG_PATH = "browser.log"
 HARVEST_FILE_REGEX = r"^harvest_[0-9]+\.bz2$"
 FORBIDDEN = "forbidden"
 ARCHIVE_PREFIX = "harvest_"

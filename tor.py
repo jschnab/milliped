@@ -1,10 +1,10 @@
-import stem
-from stem.control import Controller
-from stem.process import launch_tor_with_config
+import time
 
 import requests
+import stem
 
-import time
+from stem.control import Controller
+from stem.process import launch_tor_with_config
 
 
 class TorSession:
@@ -24,8 +24,8 @@ class TorSession:
         self.session = requests.Session()
         self.session.proxies.update(
             {
-                "http": "socks5://localhost:%d" % self.proxy_port,
-                "https": "socks5://localhost:%d" % self.proxy_port,
+                "http": f"socks5://localhost:{self.proxy_port}",
+                "https": f"socks5://localhost:{self.proxy_port}",
             }
         )
 
