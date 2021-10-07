@@ -14,8 +14,13 @@ class ZipHarvestStore:
     This class writes and reads compressed web pages, but does not delete them.
     If files that match the archive name prefix exist in the harvest directory
     when this class is instantiated, they will be added to this store.
-    """
 
+    :param str harvest_dir: Directory where archive files are stored.
+    :param str archive_prefix: Prefix for the archive file names (optional,
+        default 'harvest_'.
+    :param int max_archive_size: Maximum size in bytes for a single archive
+        file (optional, default 100MB).
+    """
     def __init__(
         self,
         harvest_dir=None,

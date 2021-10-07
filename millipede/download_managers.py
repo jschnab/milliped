@@ -101,7 +101,7 @@ class SimpleDownloadManager:
             logging.error(f"failed to download {cut_url(url)}")
             if self.proxies:
                 self.current_proxy = self.proxies.pop()
-                logging.info(f"now using proxy: {self.current_proxy}")
+                logging.info(f"now using proxies: {self.current_proxy}")
 
     def get_session(self):
         """
@@ -171,6 +171,9 @@ class TorDownloadManager:
         else:
             self.user_agent = None
         self.proxies = proxies
+        self.current_proxy = None
+        if self.proxies:
+            self.current_proxy = self.proxies.pop()
         self.timeout = timeout
         self.max_requests = max_requests
         self.tor_password = tor_password or os.getenv("TOR_PASSWORD")
@@ -179,7 +182,7 @@ class TorDownloadManager:
         self.robot_parser = RobotParser(self.base_url, self.user_agent)
         self.request_delay = request_delay or self.robot_parser.request_delay
 
-        logging.info(f"using proxies: {self.proxies}")
+        logging.info(f"using proxies: {self.current_proxy}")
         logging.info(f"using proxies: {self.headers}")
 
     def download_page(self, url):
@@ -209,13 +212,16 @@ class TorDownloadManager:
             response = self.session.get(
                 url,
                 headers=self.headers,
-                proxies=self.proxies,
+                proxies=self.current_proxy,
                 timeout=self.timeout,
             )
             return response.content
 
         except RequestException:
             logging.error(f"failed to download {cut_url(url)}")
+            if self.proxies:
+                self.current_proxy = self.proxies.pop()
+                logging.info(f"now using proxies: {self.current_proxy}")
 
     def get_session(self):
         """
@@ -287,7 +293,10 @@ class FirefoxDownloadManager:
             self.user_agent = headers.get("User-Agent")
         else:
             self.user_agent = None
-        self.proxies = proxies or {}
+        self.proxies = proxies
+        self.current_proxy = {}
+        if self.proxies:
+            self.current_proxy = self.proxies.pop()
         self.driver_path = driver_path
         self.options = options
         self.log_path = log_path
@@ -296,7 +305,7 @@ class FirefoxDownloadManager:
         self.robot_parser = RobotParser(self.base_url, self.user_agent)
         self.request_delay = request_delay or self.robot_parser.request_delay
 
-        logging.info(f"using proxies: {self.proxies}")
+        logging.info(f"using proxies: {self.current_proxy}")
         logging.info(f"using user agent: {self.user_agent}")
 
     def close(self):
@@ -332,13 +341,18 @@ class FirefoxDownloadManager:
                     f"{cut_url(url)} failed"
                 )
         logging.error(f"too many retries downloading {cut_url(url)}")
+        if self.proxies:
+            self.current_proxy = self.proxies.pop()
+            logging.info(f"now using proxies: {self.current_proxy}")
 
     def get_session(self):
         """
         Create and configure a session object to make web requests.
         """
-        https_proxy = urlparse(self.proxies.get("https")).netloc
-        http_proxy = urlparse(self.proxies.get("http")).netloc or https_proxy
+        https_proxy = urlparse(self.current_proxy.get("https")).netloc
+        http_proxy = urlparse(self.current_proxy.get("http")).netloc
+        if not http_proxy:
+            http_proxy = https_proxy
         webdriver.DesiredCapabilities.FIREFOX["proxy"] = {
             "httpProxy": http_proxy,
             "sslProxy": https_proxy,

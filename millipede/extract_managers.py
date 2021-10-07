@@ -11,6 +11,16 @@ import constants as cst
 
 
 class CSVExtractStore:
+    """
+    Class to manage storage of data extracted from web pages as a CSV file.
+
+    :param str file_path: Path of the CSV file where to store data.
+    :param sequence columns: Sequence (tuple, etc.) of column names.
+    :param str encoding: File encoding (optional, default utf-8).
+    :param kwargs: Keyword arguments used to create a CSV dialect. See
+        https://docs.python.org/3/library/csv.html#csv-fmt-params for the list
+        of parameters.
+    """
     def __init__(
         self,
         file_path,
@@ -65,6 +75,30 @@ class CSVExtractStore:
 
 
 class DatabaseExtractStore:
+    """
+    Class to manage storage of data extracted from web pages as a relational
+    database table.
+
+    The database table where to store data should already exist before this
+    class is used to store data.
+
+    :param str database: Name of the database where the table is located.
+    :param sqlalchemy.Table table_object: SQLAlchemy table object that defines
+        the table name, column names, and column types.
+    :param str engine: Database engine. Valid values include: postgresql,
+        mysql, sqlite.
+    :param str dialect: Name of the dialect to use with the engine, for
+        example psycopg2 for PostgreSQL. The appropriate dialect libraries
+        should be installed by the user.
+    :param str host: URL of the database host (optional, default localhost).
+    :param int port: Port on which the database process is listening to.
+    :param str username: User name for database authentication.
+    :param str password: Password for database authentication.
+    :param kwargs: Keyword arguments to tweak the behavior of database
+        connections. Supported parameters include 'pool_recycle', and
+        'isolation_level'.
+    """
+
     def __init__(
         self,
         database,
@@ -75,7 +109,6 @@ class DatabaseExtractStore:
         port=None,
         username=None,
         password=None,
-        table_schema=None,
         **kwargs,
     ):
         if engine not in cst.DB_ENGINES:
@@ -127,15 +160,19 @@ class DatabaseExtractStore:
 
 
 class JsonLinesExtractStore:
+    """
+    Class to store data extracted from web pages as a JSONLines file.
+
+    :param str file_path: Path of the file where to store data.
+    :param str encoding: File encoding (optional, default utf-8).
+    """
     def __init__(
         self,
         file_path,
         encoding="utf-8",
-        **kwargs,
     ):
         self.file_path = file_path
         self.encoding = encoding
-        self.kwargs = kwargs
 
     def write(self, records):
         """

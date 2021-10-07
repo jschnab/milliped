@@ -31,7 +31,7 @@ def cut_url(url):
     Useful for logging.
 
     :param str url:
-    :return str: short URL
+    :returns (str): short URL
     """
     if len(url) > 50:
         return f"...{url[-45:]}"
@@ -59,6 +59,8 @@ class LocalExploredSet:
         """
         Add args to the set.
         Note: args should be of type 'string'.
+
+        :param args: Strings to add to the set.
         """
         for a in args:
             if not isinstance(a, str):
@@ -80,9 +82,19 @@ class LocalQueue:
         self.queue = deque()
 
     def enqueue(self, item):
+        """
+        Add an item to the queue.
+
+        :param str item: item to add to the queue.
+        """
         self.queue.appendleft(item)
 
     def dequeue(self):
+        """
+        Dequeue an item and return it.
+
+        :returns (str): Item from the queue.
+        """
         return self.queue.pop()
 
     def __len__(self):
@@ -94,6 +106,12 @@ class LocalQueue:
 
 
 class RobotParser:
+    """
+    Class that reads and interprets the information in the file robots.txt.
+
+    :param str base_url: Root URL of the website being crawled.
+    :param str user_agent: User agent used during crawling.
+    """
     def __init__(self, base_url, user_agent=None):
         self.base_url = base_url
         self.user_agent = user_agent or "*"
@@ -118,13 +136,13 @@ class RobotParser:
         Always returns True if the website does not have a robots.txt file.
 
         :param str url: url to check
-        :return bool: True if we can browse the page else False
+        :returns (bool): True if we can browse the page else False
         """
         if not url.startswith(self.base_url):
             url = urljoin(self.base_url, url)
         if self.parser:
             return self.parser.can_fetch(self.user_agent, url)
-        return False
+        return True
 
 
 class SQSQueue:
@@ -149,7 +167,7 @@ class SQSQueue:
         """
         Dequeue item from an SQS queue.
 
-        :return str: message body of an item from the queue
+        :returns (str): message body of an item from the queue
         """
         response = self.client.receive_message(
             QueueUrl=self.queue_url,
