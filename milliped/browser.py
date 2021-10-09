@@ -1,15 +1,14 @@
-import logging
 import time
 
-from configparser import ConfigParser
 from functools import partial
-from pathlib import Path
 
 from bs4 import BeautifulSoup
 
-import constants as cst
+import milliped.constants as cst
 
-from utils import cut_url
+from milliped.utils import cut_url, get_logger
+
+LOGGER = get_logger(__file__)
 
 
 class Browser:
@@ -25,9 +24,10 @@ class Browser:
         of the next page to harvest.
     :param callable get_page_id: Function which shortens the URL into a
         unique ID, this is used when saving harvested pages.
-    :param class explored_set: Object to store a set of explored web pages.
+    :param class browse_set: Object to store a set of browsed web pages.
     :param class browse_queue: Object to store a queue of web pages to
         browse.
+    :param class harvest_set: Object to store a set of harvested web pages.
     :param class harvest_queue: Object to store a queue of web pages to
         parse.
     :param object download_manager: Object to manage downloading web pages.
@@ -39,7 +39,7 @@ class Browser:
         web pages.
     :param object extract_store: Object to manage storage of extracted
         data from parsed web pages.
-    :param str log_path: Path where to log browser activity.
+    :param logging.Logger logger: Configured logger object.
     """
 
     def __init__(
@@ -49,15 +49,16 @@ class Browser:
         get_browsable=None,
         get_harvestable=None,
         get_page_id=None,
-        explored_set=None,
+        browse_set=None,
         browse_queue=None,
+        harvest_set=None,
         harvest_queue=None,
         download_manager=None,
         html_parser="html.parser",
         soup_parser=None,
         harvest_store=None,
         extract_store=None,
-        log_path=cst.LOG_PATH,
+        logger=LOGGER,
     ):
         self.base_url = base_url
         self.stop_test = stop_test
@@ -65,13 +66,14 @@ class Browser:
         self.get_harvestable = get_harvestable
         self.get_page_id = get_page_id
         self.soup_parser = soup_parser
-        self.explored_set = explored_set
+        self.browse_set = browse_set
         self.browse_queue = browse_queue
+        self.harvest_set = harvest_set
         self.harvest_queue = harvest_queue
         self.download_manager = download_manager
         self.harvest_store = harvest_store
         self.extract_store = extract_store
-        self.log_path = log_path
+        self.logger = logger
         self.archive_count = 1
         self.pauses = 0
 
@@ -80,12 +82,10 @@ class Browser:
         else:
             self.html_parser = partial(BeautifulSoup, features=html_parser)
 
-        logging.basicConfig(
-            format="%(asctime)s %(levelname)s %(message)s",
-            level=logging.INFO,
-            filename=self.log_path,
-            filemode="a"
-        )
+        self.logger.info("Browser ready")
+
+    def __repr__(self):
+        return f"Browser(base_url={self.base_url})"
 
     def pause(self):
         """
@@ -107,24 +107,23 @@ class Browser:
         :param str initial: URL where to start browsing (suffix to append
             to the base URL)
         """
-        logging.info("start browsing")
+        self.logger.info("Start browsing")
         if not initial:
             initial = self.base_url
 
-        if initial not in self.explored_set:
+        if initial not in self.browse_set:
             self.browse_queue.enqueue(initial)
-            self.explored_set.add(initial)
+            self.browse_set.add(initial)
 
         while not self.browse_queue.is_empty:
             current = self.browse_queue.dequeue()
             if not current:
-                logging.info("empty message received from queue, pausing")
+                self.logger.info("Empty message received from queue, pausing")
                 self.pause()
                 continue
 
             self.pauses = 0
 
-            logging.info(f"downloading {cut_url(current)}")
             content = self.download_manager.download_page(url=current)
 
             self.download_manager.sleep()
@@ -138,47 +137,48 @@ class Browser:
             if content == cst.FORBIDDEN:
                 continue
 
-            logging.info("parsing HTML code")
+            self.logger.info("Parsing HTML code")
             soup = self.html_parser(content)
 
             # get list of web links to harvest
             for child in self.get_harvestable(soup):
-                if child in self.explored_set:
+                if child in self.harvest_set:
                     continue
-                logging.info(f"found to harvest {cut_url(child)}")
-                self.explored_set.add(child)
+                self.logger.info(f"Found to harvest {cut_url(child)}")
+                self.harvest_set.add(child)
                 self.harvest_queue.enqueue(child)
 
             # check if we're at the last page
-            # if yes return, else get next page of listings
-            if self.stop_test(soup):
-                logging.info("reached last page to browse, stopping")
+            # if yes return, else get next page to browse
+            if self.stop_test and self.stop_test(soup):
+                self.logger.info("Reached last page to browse, stopping")
                 return
 
             for child in self.get_browsable(soup):
-                if child in self.explored_set:
+                if child in self.browse_set:
                     continue
-                logging.info(f"found to browse next {cut_url(child)}")
-                self.explored_set.add(child)
+                self.logger.info(f"Found to browse next {cut_url(child)}")
+                self.browse_set.add(child)
                 self.browse_queue.enqueue(child)
+
+        self.logger.info("Finished browsing")
 
     def harvest(self):
         """
         Download the web pages stored in self.harvest_queue and save the data
         in the harvest store.
         """
-        logging.info("start harvesting")
+        self.logger.info("Start harvesting")
 
         while not self.harvest_queue.is_empty:
             current = self.harvest_queue.dequeue()
             if not current:
-                logging.info("empty message received from queue, pausing")
+                self.logger.info("Empty message received from queue, pausing")
                 self.pause()
                 continue
 
             self.pauses = 0
 
-            logging.info(f"downloading {cut_url(current)}")
             content = self.download_manager.download_page(url=current)
 
             self.download_manager.sleep()
@@ -192,25 +192,25 @@ class Browser:
             if content == cst.FORBIDDEN:
                 continue
 
-            logging.info(f"storing {cut_url(current)}")
+            self.logger.info(f"Storing {cut_url(current)}")
             file_name = self.get_page_id(current)
             self.harvest_store.put(file_name, content)
 
-        logging.info("finished harvesting")
+        self.logger.info("Finished harvesting")
 
     def extract(self):
         """
         Extract data from HTML pages stored in the harvest store and save it
         with the extract store.
         """
-        logging.info("start extracting")
+        self.logger.info("Start extracting")
 
         while len(self.harvest_store) > 0:
             file_name, content = self.harvest_store.get()
-            logging.info(f"parsing {file_name}")
+            self.logger.info(f"Parsing {file_name}")
             soup = self.html_parser(content)
             parsed = self.soup_parser(soup)
             inserted_rows = self.extract_store.write(parsed)
-            logging.info(f"inserted {inserted_rows}")
+            self.logger.info(f"Inserted {inserted_rows}")
 
-        logging.info("finished extracting")
+        self.logger.info("Finished extracting")

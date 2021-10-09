@@ -1,4 +1,3 @@
-import logging
 import os
 import random
 import time
@@ -11,16 +10,18 @@ from requests.adapters import HTTPAdapter
 from requests.exceptions import RequestException
 from requests.packages.urllib3.util.retry import Retry
 from selenium import webdriver
-from stem.util.log import get_logger
+from stem.util.log import get_logger as get_stem_logger
 
-import constants as cst
+import milliped.constants as cst
 
-from tor import TorSession
-from utils import cut_url, RobotParser, timeout
+from milliped.tor import TorSession
+from milliped.utils import cut_url, get_logger, RobotParser, timeout
 
-# silence stem log messages
-stem_logger = get_logger()
-stem_logger.propagate = False
+# silence Stem log messages
+STEM_LOGGER = get_stem_logger()
+STEM_LOGGER.propagate = False
+
+LOGGER = get_logger(__name__)
 
 
 class SimpleDownloadManager:
@@ -50,6 +51,7 @@ class SimpleDownloadManager:
         proxies=None,
         timeout=cst.REQUEST_TIMEOUT,
         request_delay=cst.REQUEST_DELAY,
+        logger=LOGGER,
     ):
         self.base_url = base_url
         self.max_retries = max_retries
@@ -65,13 +67,15 @@ class SimpleDownloadManager:
         if self.proxies:
             self.current_proxy = self.proxies.pop()
         self.timeout = timeout
+        self.logger = logger
         self.get_session()
 
         self.robot_parser = RobotParser(self.base_url, self.user_agent)
         self.request_delay = self.robot_parser.request_delay or request_delay
 
-        logging.info(f"using proxies: {self.current_proxy}")
-        logging.info(f"using headers: {self.headers}")
+        self.logger.info("SimpleDownloadManager ready")
+        self.logger.info(f"Using proxies: {self.current_proxy}")
+        self.logger.info(f"Using headers: {self.headers}")
 
     def download_page(self, url):
         """
@@ -83,9 +87,10 @@ class SimpleDownloadManager:
         """
         if not url.startswith(self.base_url):
             url = urljoin(self.base_url, url)
+        self.logger.info(f"Downloading {cut_url(url)}")
 
         if not self.robot_parser.can_fetch(url):
-            logging.info("forbidden to browse the current page")
+            self.logger.info("Forbidden to browse the current page")
             return cst.FORBIDDEN
 
         try:
@@ -95,13 +100,14 @@ class SimpleDownloadManager:
                 proxies=self.current_proxy,
                 timeout=self.timeout,
             )
+            self.logger.info("Download successful")
             return response.content
 
         except RequestException:
-            logging.error(f"failed to download {cut_url(url)}")
+            self.logger.error(f"Failed to download {cut_url(url)}")
             if self.proxies:
                 self.current_proxy = self.proxies.pop()
-                logging.info(f"now using proxies: {self.current_proxy}")
+                self.logger.info(f"Now using proxies: {self.current_proxy}")
 
     def get_session(self):
         """
@@ -160,6 +166,7 @@ class TorDownloadManager:
         request_delay=cst.REQUEST_DELAY,
         max_requests=cst.MAX_TOR_REQUESTS,
         tor_password=None,
+        logger=LOGGER,
     ):
         self.base_url = base_url
         self.max_retries = max_retries
@@ -177,13 +184,15 @@ class TorDownloadManager:
         self.timeout = timeout
         self.max_requests = max_requests
         self.tor_password = tor_password or os.getenv("TOR_PASSWORD")
+        self.logger = logger
         self.session = self.get_session()
 
         self.robot_parser = RobotParser(self.base_url, self.user_agent)
         self.request_delay = request_delay or self.robot_parser.request_delay
 
-        logging.info(f"using proxies: {self.current_proxy}")
-        logging.info(f"using proxies: {self.headers}")
+        self.logger.info("TorDownloadManager ready")
+        self.logger.info(f"Using proxies: {self.current_proxy}")
+        self.logger.info(f"Using proxies: {self.headers}")
 
     def download_page(self, url):
         """
@@ -194,8 +203,8 @@ class TorDownloadManager:
             should not be programmatically downloaded, according to robots.txt.
         """
         if self.max_requests != 0 and self.n_requests == self.max_requests:
-            logging.info(
-                "reached max number of requests for single session, "
+            self.logger.info(
+                "Reached max number of requests for single session, "
                 "getting new session"
             )
             self.session = self.get_session()
@@ -203,9 +212,10 @@ class TorDownloadManager:
 
         if not url.startswith(self.base_url):
             url = urljoin(self.base_url, url)
+        self.logger.info(f"Downloading {cut_url(url)}")
 
         if not self.robot_parser.can_fetch(url):
-            logging.info("forbidden to browse the current page")
+            self.logger.info("Forbidden to browse the current page")
             return cst.FORBIDDEN
 
         try:
@@ -218,10 +228,10 @@ class TorDownloadManager:
             return response.content
 
         except RequestException:
-            logging.error(f"failed to download {cut_url(url)}")
+            self.logger.error(f"Failed to download {cut_url(url)}")
             if self.proxies:
                 self.current_proxy = self.proxies.pop()
-                logging.info(f"now using proxies: {self.current_proxy}")
+                self.logger.info(f"Now using proxies: {self.current_proxy}")
 
     def get_session(self):
         """
@@ -229,11 +239,11 @@ class TorDownloadManager:
         """
         self.n_requests = 0
         # new IP only after reset_identity() is called and new session is made
-        logging.info("making a Tor session")
+        self.logger.info("Making a Tor session")
         session = TorSession(password=self.tor_password)
         session.reset_identity()
         session = TorSession(password=self.tor_password)
-        logging.info("made a Tor session")
+        self.logger.info("Made a Tor session")
 
         retry = Retry(
             total=self.max_retries,
@@ -283,8 +293,9 @@ class FirefoxDownloadManager:
         proxies=None,
         driver_path=None,
         options=cst.FIREFOX_OPTIONS,
-        log_path=cst.GECKODRIVER_LOG,
+        webdriver_log_path=cst.GECKODRIVER_LOG,
         request_delay=cst.REQUEST_DELAY,
+        logger=LOGGER,
     ):
         self.base_url = base_url
         self.max_retries = max_retries
@@ -299,14 +310,16 @@ class FirefoxDownloadManager:
             self.current_proxy = self.proxies.pop()
         self.driver_path = driver_path
         self.options = options
-        self.log_path = log_path
+        self.webdriver_log_path = webdriver_log_path
+        self.logger = logger
         self.session = self.get_session()
 
         self.robot_parser = RobotParser(self.base_url, self.user_agent)
         self.request_delay = request_delay or self.robot_parser.request_delay
 
-        logging.info(f"using proxies: {self.current_proxy}")
-        logging.info(f"using user agent: {self.user_agent}")
+        self.logger.info("FirefoxDownloadManager ready")
+        self.logger.info(f"Using proxies: {self.current_proxy}")
+        self.logger.info(f"Using user agent: {self.user_agent}")
 
     def close(self):
         self.session.close()
@@ -327,23 +340,24 @@ class FirefoxDownloadManager:
         """
         if not url.startswith(self.base_url):
             url = urljoin(self.base_url, url)
+        self.logger.info(f"Downloading {cut_url(url)}")
 
         if not self.robot_parser.can_fetch(url):
-            logging.info("forbidden to browse the current page")
+            self.logger.info("Forbidden to browse the current page")
             return cst.FORBIDDEN
 
         for i in range(self.max_retries):
             try:
                 return self._get_page_contents(url)
             except Exception as e:
-                logging.error(
+                self.logger.error(
                     f"{e}: retry {i+1}/{self.max_retries} downloading "
                     f"{cut_url(url)} failed"
                 )
-        logging.error(f"too many retries downloading {cut_url(url)}")
+        self.logger.error(f"Too many retries downloading {cut_url(url)}")
         if self.proxies:
             self.current_proxy = self.proxies.pop()
-            logging.info(f"now using proxies: {self.current_proxy}")
+            self.logger.info(f"Now using proxies: {self.current_proxy}")
 
     def get_session(self):
         """
@@ -371,7 +385,7 @@ class FirefoxDownloadManager:
             executable_path=self.driver_path,
             options=options,
             firefox_profile=profile,
-            log_path=self.log_path,
+            log_path=self.webdriver_log_path,
         )
         if not self.user_agent:
             self.user_agent = session.execute_script(

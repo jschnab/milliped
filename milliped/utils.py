@@ -12,13 +12,15 @@ from urllib.robotparser import RobotFileParser
 
 import boto3
 
+import milliped.constants as cst
+
 
 def check_status(response):
     """
     Check that HTTP status code of the response from a call to AWS is 200.
 
-    :param dict response: response to the AWS call
-    :raises ValueError: if response HTTP status code is not 200
+    :param dict response: Response to the AWS call.
+    :raises ValueError: If response HTTP status code is not 200.
     """
     code = response.get("ResponseMetadata", {}).get("HTTPStatusCode", 0)
     if code != 200:
@@ -30,12 +32,49 @@ def cut_url(url):
     If URL is longer than 50 characters, show the last 45.
     Useful for logging.
 
-    :param str url:
-    :returns (str): short URL
+    :param str url: URL to shorten.
+    :returns (str): Short URL.
     """
     if len(url) > 50:
         return f"...{url[-45:]}"
     return url
+
+
+def get_all_links(soup):
+    """
+    Get all links from a BeautifulSoup object.
+
+    :param bs4.BeautifulSoup soup: Soup to parse links from.
+    :returns (list): List of links.
+    """
+    return [link.attrs["href"] for link in soup.find_all("a")]
+
+
+def get_logger(name, level=cst.LOG_LEVEL, propagate=False, *args, **kwargs):
+    """
+    Get a logger object.
+    """
+    logger = logging.getLogger(name)
+    logger.setLevel(level)
+    logger.propagate = propagate
+    for config in kwargs.get("handlers", []):
+        handler = cst.LOG_HANDLERS[config["handler"]](
+            **config["handler_kwargs"]
+        )
+        handler.setFormatter(logging.Formatter(config.get("format")))
+        handler.setLevel(config.get("level", level))
+        logger.addHandler(handler)
+    return logger
+
+
+def hash_string(s):
+    """
+    Hash a string using MD5.
+
+    :param str s: String to Hash.
+    :returns (str): MD5 hash of the input.
+    """
+    return hashlib.md5(s.encode()).hexdigest()
 
 
 class LocalExploredSet:
@@ -43,6 +82,7 @@ class LocalExploredSet:
     Class that stores explored web pages contents implemented using the Python
     built-in 'set' object.
     """
+
     def __init__(self):
         self.explored = set()
 
@@ -63,9 +103,7 @@ class LocalExploredSet:
         :param args: Strings to add to the set.
         """
         for a in args:
-            if not isinstance(a, str):
-                raise TypeError(f"Expected {a} to be str, got {type(a)}")
-            self.explored.add(hashlib.md5(a.encode()).hexdigest())
+            self.explored.add(a)
 
     def clear(self):
         """
@@ -78,6 +116,7 @@ class LocalQueue:
     """
     In-memory queue implemented using the Python class collections.deque.
     """
+
     def __init__(self):
         self.queue = deque()
 
@@ -85,7 +124,7 @@ class LocalQueue:
         """
         Add an item to the queue.
 
-        :param str item: item to add to the queue.
+        :param str item: Item to add to the queue.
         """
         self.queue.appendleft(item)
 
@@ -105,6 +144,19 @@ class LocalQueue:
         return len(self.queue) == 0
 
 
+def parse_soup(soup):
+    """
+    Get a map <link text> -> <link URL> from a BeautifulSoup object.
+
+    :param bs4.BeautifulSoup soup: BeautifulSoup object.
+    :returns (dict): Soup parsing results.
+    """
+    for link in soup.find_all("a"):
+        if "title" in link.attrs:
+            return {link.attrs["title"]: link.attrs["href"]}
+    return {}
+
+
 class RobotParser:
     """
     Class that reads and interprets the information in the file robots.txt.
@@ -112,6 +164,7 @@ class RobotParser:
     :param str base_url: Root URL of the website being crawled.
     :param str user_agent: User agent used during crawling.
     """
+
     def __init__(self, base_url, user_agent=None):
         self.base_url = base_url
         self.user_agent = user_agent or "*"
@@ -124,9 +177,6 @@ class RobotParser:
             else:
                 self.request_delay = None
         except URLError:
-            logging.warning(
-                "could not find robots.txt, setting no request delay."
-            )
             self.request_delay = 0
             self.parser = None
 
@@ -135,8 +185,8 @@ class RobotParser:
         Checks the robots.txt file if we can fetch the page.
         Always returns True if the website does not have a robots.txt file.
 
-        :param str url: url to check
-        :returns (bool): True if we can browse the page else False
+        :param str url: URL to check.
+        :returns (bool): True if we can browse the page else False.
         """
         if not url.startswith(self.base_url):
             url = urljoin(self.base_url, url)
@@ -155,11 +205,10 @@ class SQSQueue:
         """
         Enqueue item into an SQS queue.
 
-        :param str item: item to push to add to the queue
+        :param str item: Item to push to add to the queue.
         """
         response = self.client.send_message(
-            QueueUrl=self.queue_url,
-            MessageBody=item,
+            QueueUrl=self.queue_url, MessageBody=item,
         )
         check_status(response)
 
@@ -167,11 +216,10 @@ class SQSQueue:
         """
         Dequeue item from an SQS queue.
 
-        :returns (str): message body of an item from the queue
+        :returns (str): Message body of an item from the queue.
         """
         response = self.client.receive_message(
-            QueueUrl=self.queue_url,
-            WaitTimeSeconds=self.wait_seconds
+            QueueUrl=self.queue_url, WaitTimeSeconds=self.wait_seconds
         )
         check_status(response)
         messages = response.get("Messages")
@@ -180,15 +228,14 @@ class SQSQueue:
             handle = messages[0].get("ReceiptHandle")
             body = messages[0].get("Body")
             self.client.delete_message(
-                QueueUrl=self.queue_url,
-                ReceiptHandle=handle,
+                QueueUrl=self.queue_url, ReceiptHandle=handle,
             )
             return body
 
     def __len__(self):
         resp = self.client.get_queue_attributes(
             QueueUrl=self.queue_url,
-            AttributeNames=["ApproximateNumberOfMessages"]
+            AttributeNames=["ApproximateNumberOfMessages"],
         )
         check_status(resp)
         n = resp.get("Attributes", {}).get("ApproximateNumberOfMessages", 0)

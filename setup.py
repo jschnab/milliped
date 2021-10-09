@@ -9,12 +9,12 @@ with open(os.path.join(here, "README.md")) as f:
     long_description = f.read()
 
 setup(
-    name="millipede",
-    packages=["millepede"],
+    name="milliped",
+    packages=["milliped"],
     version=__version__,
-    description="Web crawling library",
+    description="Web crawling framework",
     long_description=long_description,
-    url="https://github.com/jschnab/millepede",
+    url="https://github.com/jschnab/milleped",
     author="Jonathan Schnabel",
     author_email="jonathan.schnabel31@gmail.com",
     license="GNU General Public License v3.0",

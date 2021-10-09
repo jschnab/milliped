@@ -4,7 +4,10 @@ import os
 from collections import deque
 from zipfile import ZipFile, ZIP_BZIP2
 
-import constants as cst
+import milliped.constants as cst
+from milliped.utils import get_logger
+
+LOGGER = get_logger(__name__)
 
 
 class ZipHarvestStore:
@@ -20,16 +23,19 @@ class ZipHarvestStore:
         default 'harvest_'.
     :param int max_archive_size: Maximum size in bytes for a single archive
         file (optional, default 100MB).
+    :param logging.Logger logger: Configured logger object.
     """
     def __init__(
         self,
         harvest_dir=None,
         archive_prefix=cst.ARCHIVE_PREFIX,
         max_archive_size=cst.MAX_ARCHIVE_SIZE,
+        logger=LOGGER,
     ):
         self.harvest_dir = harvest_dir or os.getcwd()
         self.archive_prefix = archive_prefix
         self.max_archive_size = max_archive_size
+        self.logger = logger
         self.archive_count = 1
         self.file_names = deque()
 

@@ -1,10 +1,43 @@
+import logging
 import os
 
+from logging import handlers
 from pathlib import Path
 
 CONFIG_DIR = os.path.join(str(Path.home()), ".browsing")
 DEFAULT_CONFIG = os.path.join(CONFIG_DIR, "browser.conf")
-LOG_PATH = "browser.log"
+LOG_LEVEL = logging.INFO
+LOG_HANDLERS = {
+    "stream": logging.StreamHandler,
+    "file": logging.FileHandler,
+    "null": logging.NullHandler,
+    "watchedfile": handlers.WatchedFileHandler,
+    "baserotating": handlers.BaseRotatingHandler,
+    "rotatingfile": handlers.RotatingFileHandler,
+    "timedrotatingfile": handlers.TimedRotatingFileHandler,
+    "socket": handlers.SocketHandler,
+    "datagram": handlers.DatagramHandler,
+    "syslog": handlers.SysLogHandler,
+    "nteventlog": handlers.NTEventLogHandler,
+    "smtp": handlers.SMTPHandler,
+    "memory": handlers.MemoryHandler,
+    "http": handlers.HTTPHandler,
+    "queue": handlers.QueueHandler,
+    "queuelistener": handlers.QueueListener,
+}
+LOG_CONFIG = {
+    "handlers": [
+        {
+            "handler": "file",
+            "handler_kwargs": {
+                "filename": "browser.log",
+                "mode": "a",
+            },
+            "format": "%(asctime)s %(levelname)s %(message)s",
+            "level": logging.INFO,
+        },
+    ]
+}
 HARVEST_FILE_REGEX = r"^harvest_[0-9]+\.bz2$"
 FORBIDDEN = "forbidden"
 ARCHIVE_PREFIX = "harvest_"
@@ -25,6 +58,8 @@ FIREFOX_OPTIONS = [
     "disable-plugins-discovery",
 ]
 WAIT_PAGE_LOAD = 20
+CSV_EXTRACT_PATH = "extract.csv"
+JSON_EXTRACT_PATH = "extract.jsonl"
 
 # database constants
 SQLITE_ENGINE = "sqlite"

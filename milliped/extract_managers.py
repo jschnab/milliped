@@ -7,7 +7,11 @@ from urllib.parse import quote_plus
 
 import sqlalchemy
 
-import constants as cst
+import milliped.constants as cst
+
+from milliped.utils import get_logger
+
+LOGGER = get_logger(__name__)
 
 
 class CSVExtractStore:
@@ -17,20 +21,23 @@ class CSVExtractStore:
     :param str file_path: Path of the CSV file where to store data.
     :param sequence columns: Sequence (tuple, etc.) of column names.
     :param str encoding: File encoding (optional, default utf-8).
+    :param logging.Logger logger: Configured logger object.
     :param kwargs: Keyword arguments used to create a CSV dialect. See
         https://docs.python.org/3/library/csv.html#csv-fmt-params for the list
         of parameters.
     """
     def __init__(
         self,
-        file_path,
         columns,
+        file_path=cst.CSV_EXTRACT_PATH,
         encoding="utf-8",
+        logger=LOGGER,
         **kwargs,
     ):
         self.file_path = file_path
         self.columns = columns
         self.encoding = encoding
+        self.logger = logger
         self.kwargs = kwargs
         csv.register_dialect(
             "custom",
@@ -47,6 +54,8 @@ class CSVExtractStore:
             with open(self.file_path, "w", encoding=self.encoding) as f:
                 writer = csv.DictWriter(f, self.columns, **self.kwargs)
                 writer.writeheader()
+
+        self.logger.info("CSVExtractStore ready")
 
     def write(self, records):
         """
@@ -94,6 +103,7 @@ class DatabaseExtractStore:
     :param int port: Port on which the database process is listening to.
     :param str username: User name for database authentication.
     :param str password: Password for database authentication.
+    :param logging.Logger logger: Configured logger object.
     :param kwargs: Keyword arguments to tweak the behavior of database
         connections. Supported parameters include 'pool_recycle', and
         'isolation_level'.
@@ -109,6 +119,7 @@ class DatabaseExtractStore:
         port=None,
         username=None,
         password=None,
+        logger=LOGGER,
         **kwargs,
     ):
         if engine not in cst.DB_ENGINES:
@@ -116,6 +127,7 @@ class DatabaseExtractStore:
                 f"engine should be one of {cst.IMPLEMENTED_ENGINES}, "
                 f"got: {engine}"
             )
+        self.logger = logger
         self.engine = engine
         self.database = database
         self.table_object = table_object
@@ -140,6 +152,8 @@ class DatabaseExtractStore:
         )
         self.connection = self.engine.connect()
 
+        self.logger.info("DatabaseExtractStore ready")
+
     def write(self, records):
         """
         Store one or more records in a table. A single record should be passed
@@ -159,20 +173,25 @@ class DatabaseExtractStore:
         return result.rowcount
 
 
-class JsonLinesExtractStore:
+class JSONLinesExtractStore:
     """
     Class to store data extracted from web pages as a JSONLines file.
 
     :param str file_path: Path of the file where to store data.
     :param str encoding: File encoding (optional, default utf-8).
+    :param logging.Logger logger: Configure logger object.
     """
     def __init__(
         self,
-        file_path,
+        file_path=cst.JSON_EXTRACT_PATH,
         encoding="utf-8",
+        logger=LOGGER,
     ):
         self.file_path = file_path
         self.encoding = encoding
+        self.logger = logger
+
+        self.logger.info("JSONLinesExtractStore ready")
 
     def write(self, records):
         """
