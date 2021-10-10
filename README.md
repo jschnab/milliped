@@ -90,8 +90,8 @@ browser.harvest()
 
 `SimpleBrowser` is configured to download the HTML code of every page
 previously queued for harvesting and store it in compressed archives that
-follow the naming pattern `harvest_x.bz2` where `x` is the file number. This is
-because file size is capped at 100MB so once a file reaches this size a new
+follow the naming pattern `harvest_x.bz2` where `x` is the file number.
+File size is capped at 100MB so once a file reaches this size a new
 file is produced.
 
 Finally, we run the data extraction step:
@@ -114,9 +114,9 @@ def soup_parser(soup):
                 "price": float(soup.find("p").text.replace("\u00a3", "")),
             }
             return result
-        except Exception:
-            pass
-        return {}
+    except Exception:
+        pass
+    return {}
 ```
 
 It tries to parse book title and price from a `BeautifulSoup` object and
