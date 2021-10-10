@@ -40,6 +40,7 @@ LOG_CONFIG = {
 }
 HARVEST_FILE_REGEX = r"^harvest_[0-9]+\.bz2$"
 FORBIDDEN = "forbidden"
+NOT_FOUND = "not found"
 ARCHIVE_PREFIX = "harvest_"
 MAX_ARCHIVE_SIZE = 100 * 1000 * 1000  # 100 MB
 PAUSE_BACKOFF = 0.3
@@ -60,6 +61,7 @@ FIREFOX_OPTIONS = [
 WAIT_PAGE_LOAD = 20
 CSV_EXTRACT_PATH = "extract.csv"
 JSON_EXTRACT_PATH = "extract.jsonl"
+QUEUE_NAME = "Queue"
 
 # database constants
 SQLITE_ENGINE = "sqlite"

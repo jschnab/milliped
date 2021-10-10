@@ -4,13 +4,10 @@ import logging
 import os
 import signal
 
-from collections import deque
 from functools import wraps
 from urllib.error import URLError
 from urllib.parse import urljoin
 from urllib.robotparser import RobotFileParser
-
-import boto3
 
 import milliped.constants as cst
 
@@ -77,86 +74,6 @@ def hash_string(s):
     return hashlib.md5(s.encode()).hexdigest()
 
 
-class LocalExploredSet:
-    """
-    Class that stores explored web pages contents implemented using the Python
-    built-in 'set' object.
-    """
-
-    def __init__(self):
-        self.explored = set()
-
-    def __len__(self):
-        return len(self.explored)
-
-    def __repr__(self):
-        return repr(self.explored)
-
-    def __contains__(self, item):
-        return item in self.explored
-
-    def add(self, *args):
-        """
-        Add args to the set.
-        Note: args should be of type 'string'.
-
-        :param args: Strings to add to the set.
-        """
-        for a in args:
-            self.explored.add(a)
-
-    def clear(self):
-        """
-        Delete all items from the set.
-        """
-        self.explored.clear()
-
-
-class LocalQueue:
-    """
-    In-memory queue implemented using the Python class collections.deque.
-    """
-
-    def __init__(self):
-        self.queue = deque()
-
-    def enqueue(self, item):
-        """
-        Add an item to the queue.
-
-        :param str item: Item to add to the queue.
-        """
-        self.queue.appendleft(item)
-
-    def dequeue(self):
-        """
-        Dequeue an item and return it.
-
-        :returns (str): Item from the queue.
-        """
-        return self.queue.pop()
-
-    def __len__(self):
-        return len(self.queue)
-
-    @property
-    def is_empty(self):
-        return len(self.queue) == 0
-
-
-def parse_soup(soup):
-    """
-    Get a map <link text> -> <link URL> from a BeautifulSoup object.
-
-    :param bs4.BeautifulSoup soup: BeautifulSoup object.
-    :returns (dict): Soup parsing results.
-    """
-    for link in soup.find_all("a"):
-        if "title" in link.attrs:
-            return {link.attrs["title"]: link.attrs["href"]}
-    return {}
-
-
 class RobotParser:
     """
     Class that reads and interprets the information in the file robots.txt.
@@ -193,57 +110,6 @@ class RobotParser:
         if self.parser:
             return self.parser.can_fetch(self.user_agent, url)
         return True
-
-
-class SQSQueue:
-    def __init__(self, queue_url, wait_seconds=20):
-        self.queue_url = queue_url
-        self.wait_seconds = wait_seconds
-        self.client = boto3.client("sqs")
-
-    def enqueue(self, item):
-        """
-        Enqueue item into an SQS queue.
-
-        :param str item: Item to push to add to the queue.
-        """
-        response = self.client.send_message(
-            QueueUrl=self.queue_url, MessageBody=item,
-        )
-        check_status(response)
-
-    def dequeue(self):
-        """
-        Dequeue item from an SQS queue.
-
-        :returns (str): Message body of an item from the queue.
-        """
-        response = self.client.receive_message(
-            QueueUrl=self.queue_url, WaitTimeSeconds=self.wait_seconds
-        )
-        check_status(response)
-        messages = response.get("Messages")
-        if messages:
-            # we only receive one message at a time
-            handle = messages[0].get("ReceiptHandle")
-            body = messages[0].get("Body")
-            self.client.delete_message(
-                QueueUrl=self.queue_url, ReceiptHandle=handle,
-            )
-            return body
-
-    def __len__(self):
-        resp = self.client.get_queue_attributes(
-            QueueUrl=self.queue_url,
-            AttributeNames=["ApproximateNumberOfMessages"],
-        )
-        check_status(resp)
-        n = resp.get("Attributes", {}).get("ApproximateNumberOfMessages", 0)
-        return int(n)
-
-    @property
-    def is_empty(self):
-        return len(self) == 0
 
 
 class TimeoutError(Exception):

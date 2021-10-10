@@ -49,16 +49,25 @@ with sensible defaults. This class does not scrape very useful data, the goal
 is to give a sense of how Milliped browser objects should be used.
 
 To get started with `SimpleBrowser`, you just need the URL of a website you
-would like to crawl. Choose a website that allows you to crawl it (for example
-[books.toscrape.com](https://books.toscrape.com) or search online "scraping
-sandbox" if you have no idea), and make sure you respect the rules described
-in "terms of use" and or the file `robots.txt`. Then open your favorite Python
-interpreter and run:
+would like to crawl, and a function that extracts information from a
+`BeautifulSoup` object. Choose a website that allows you to crawl it, you can
+search online the words "scraping sandbox" if you need inspiration. Make sure
+you respect the rules described in "terms of use" and the file `robots.txt` of
+the file you would like to crawl.
+
+In this example, we are going to crawl the website
+[books.toscrape.com](https://books.toscrape.com) and extract book titles and
+prices.
+
+Open your favorite Python interpreter and run:
 
 ```
-from milliped import SimpleBrowser
+from milliped import examples
 
-browser = SimpleBrowser(url="https://books.toscrape.com")
+browser = examples.SimpleBrowser(
+    url="https://books.toscrape.com",
+    soup_parser=examples.soup_parser,
+)
 ```
 
 Now you should be ready to go. You can check logs in the file `browser.log`
@@ -91,13 +100,30 @@ Finally, we run the data extraction step:
 browser.extract()
 ```
 
-`SimpleBrowser` is configured to extract the title and URL of a most one link
-(HTML `a` element) in each harvested page, and store it in a dictionary with
-keys named "title" and "url". This dictionary is then appended to a file named
-`extract.jsonl` that follows the [JSONLines](https://jsonlines.org)
-specification.
+Extraction results are saved in the file `extract.jsonl`.
 
-The `SimpleBrowser` class is configured with very simple options, so it does
-not lead to ground-breaking results. However, now that you are familiar with
-how to use Milliped `Browser` classes, we will have a look at how you can
-create your own browser object that fits your specific use-case.
+The function `examples.soup_parser` that we used as an argument to the
+`SimpleBrowser` parameter `soup_parser` is the following:
+
+```
+def soup_parser(soup):
+    try:
+        result = {
+            "title": soup.find("h1").text,
+                # remove Sterling pound sign
+                "price": float(soup.find("p").text.replace("\u00a3", "")),
+            }
+            return result
+        except Exception:
+            pass
+        return {}
+```
+
+It tries to parse book title and price from a `BeautifulSoup` object and
+returns a dictionary with keys named "title" and "price". This dictionary is
+then appended to a file named `extract.jsonl` that follows the
+[JSONLines](https://jsonlines.org) specification.
+
+Now that you are familiar with how to use Milliped `Browser` classes, we will
+have a look at how you can create your own browser object that fits your
+specific use-case.

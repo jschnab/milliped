@@ -77,21 +77,26 @@ class SimpleDownloadManager:
         self.logger.info(f"Using proxies: {self.current_proxy}")
         self.logger.info(f"Using headers: {self.headers}")
 
-    def download_page(self, url):
+    def download(self, url):
         """
-        Download a web page.
+        Download a web page and return a tuple (status code, response text).
+
+        If the request failed, the response text will be None. If the request
+        was not sent, e.g. robots.txt indicates the page should not be
+        accessed, the status code will be None.
 
         :param str url: URL of the page to download.
-        :returns (str): Contents of the web page or 'forbidden' if this page
-            should not be programmatically downloaded, according to robots.txt.
+        :returns (tuple): 2-element tuple where the first element is the
+            request status code (integer) and the second element is the
+            response content (bytes).
         """
         if not url.startswith(self.base_url):
             url = urljoin(self.base_url, url)
-        self.logger.info(f"Downloading {cut_url(url)}")
+        self.logger.info(f"Downloading {url}")
 
         if not self.robot_parser.can_fetch(url):
-            self.logger.info("Forbidden to browse the current page")
-            return cst.FORBIDDEN
+            self.logger.info("Forbidden by robots.txt: {url}")
+            return None, None
 
         try:
             response = self.session.get(
@@ -100,14 +105,16 @@ class SimpleDownloadManager:
                 proxies=self.current_proxy,
                 timeout=self.timeout,
             )
+            response.raise_for_status()
             self.logger.info("Download successful")
-            return response.content
+            return response.status_code, response.content
 
-        except RequestException:
-            self.logger.error(f"Failed to download {cut_url(url)}")
+        except RequestException as e:
+            self.logger.error(f"Failed to download {url}: {e}")
             if self.proxies:
                 self.current_proxy = self.proxies.pop()
                 self.logger.info(f"Now using proxies: {self.current_proxy}")
+            return response.status_code, None
 
     def get_session(self):
         """
@@ -194,13 +201,14 @@ class TorDownloadManager:
         self.logger.info(f"Using proxies: {self.current_proxy}")
         self.logger.info(f"Using proxies: {self.headers}")
 
-    def download_page(self, url):
+    def download(self, url):
         """
         Download a web page.
 
         :param str url: URL of the page to download.
-        :returns (str): Contents of the web page or 'forbidden' if this page
-            should not be programmatically downloaded, according to robots.txt.
+        :returns (tuple): 2-element tuple where the first element is the
+            request status code (integer) and the second element is the
+            response content (bytes).
         """
         if self.max_requests != 0 and self.n_requests == self.max_requests:
             self.logger.info(
@@ -212,11 +220,11 @@ class TorDownloadManager:
 
         if not url.startswith(self.base_url):
             url = urljoin(self.base_url, url)
-        self.logger.info(f"Downloading {cut_url(url)}")
+        self.logger.info(f"Downloading {url}")
 
         if not self.robot_parser.can_fetch(url):
-            self.logger.info("Forbidden to browse the current page")
-            return cst.FORBIDDEN
+            self.logger.info("Forbidden by robots.txt: {url}")
+            return None, None
 
         try:
             response = self.session.get(
@@ -225,13 +233,16 @@ class TorDownloadManager:
                 proxies=self.current_proxy,
                 timeout=self.timeout,
             )
-            return response.content
+            response.raise_for_status()
+            self.logger.info("Download successful")
+            return response.status_code, response.content
 
-        except RequestException:
-            self.logger.error(f"Failed to download {cut_url(url)}")
+        except RequestException as e:
+            self.logger.error(f"Failed to download {url}: {e}")
             if self.proxies:
                 self.current_proxy = self.proxies.pop()
                 self.logger.info(f"Now using proxies: {self.current_proxy}")
+            return response.status_code, None
 
     def get_session(self):
         """
@@ -325,39 +336,43 @@ class FirefoxDownloadManager:
         self.session.close()
 
     @timeout(60)
-    def _get_page_contents(self, url):
+    def _get_page_content(self, url):
         self.session.get(url)
         time.sleep(random.gauss(self.wait_page_load, self.wait_page_load / 6))
         return self.session.page_source
 
-    def download_page(self, url):
+    def download(self, url):
         """
         Download a web page.
 
         :param str url: URL of the page to download.
-        :returns (str): Contents of the web page or 'forbidden' if this page
-            should not be programmatically downloaded, according to robots.txt.
+        :returns (tuple): 2-element tuple where the first element is the
+            request status code (integer) and the second element is the
+            response content (bytes).
         """
         if not url.startswith(self.base_url):
             url = urljoin(self.base_url, url)
-        self.logger.info(f"Downloading {cut_url(url)}")
+        self.logger.info(f"Downloading {url}")
 
         if not self.robot_parser.can_fetch(url):
-            self.logger.info("Forbidden to browse the current page")
-            return cst.FORBIDDEN
+            self.logger.info("Forbidden by robots.txt: {url}")
+            return None, None
 
         for i in range(self.max_retries):
             try:
-                return self._get_page_contents(url)
+                content = self._get_page_content(url)
+                self.logger.info("Download successful")
+                return 200, content
             except Exception as e:
                 self.logger.error(
                     f"{e}: retry {i+1}/{self.max_retries} downloading "
                     f"{cut_url(url)} failed"
                 )
-        self.logger.error(f"Too many retries downloading {cut_url(url)}")
+        self.logger.error(f"Too many retries downloading {url}")
         if self.proxies:
             self.current_proxy = self.proxies.pop()
             self.logger.info(f"Now using proxies: {self.current_proxy}")
+        return None, None
 
     def get_session(self):
         """

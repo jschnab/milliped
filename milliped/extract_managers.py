@@ -54,7 +54,6 @@ class CSVExtractStore:
             with open(self.file_path, "w", encoding=self.encoding) as f:
                 writer = csv.DictWriter(f, self.columns, **self.kwargs)
                 writer.writeheader()
-
         self.logger.info("CSVExtractStore ready")
 
     def write(self, records):
@@ -80,7 +79,7 @@ class CSVExtractStore:
                     "records should be a list, tuple, or dict, "
                     f"got: {type(records)}"
                 )
-        return inserted_rows
+        self.logger.info(f"Inserted rows: {inserted_rows}")
 
 
 class DatabaseExtractStore:
@@ -151,7 +150,6 @@ class DatabaseExtractStore:
             isolation_level=kwargs.get("isolation_level", cst.ISOLATION_LEVEL),
         )
         self.connection = self.engine.connect()
-
         self.logger.info("DatabaseExtractStore ready")
 
     def write(self, records):
@@ -170,7 +168,7 @@ class DatabaseExtractStore:
         if isinstance(records, dict):
             records = [records]
         result = self.connection.execute(self.table_object.insert(), records)
-        return result.rowcount
+        self.logger.info(f"Inserted rows: {result.rowcount}")
 
 
 class JSONLinesExtractStore:
@@ -190,7 +188,6 @@ class JSONLinesExtractStore:
         self.file_path = file_path
         self.encoding = encoding
         self.logger = logger
-
         self.logger.info("JSONLinesExtractStore ready")
 
     def write(self, records):
@@ -208,11 +205,12 @@ class JSONLinesExtractStore:
                     f.write(json.dumps(r) + os.linesep)
                     inserted_rows += 1
             elif isinstance(records, dict):
-                f.write(json.dumps(records) + os.linesep)
-                inserted_rows += 1
+                if records:
+                    f.write(json.dumps(records) + os.linesep)
+                    inserted_rows += 1
             else:
                 raise ValueError(
                     "records should be a list, tuple, or dict, "
                     f"got: {type(records)}"
                 )
-        return inserted_rows
+        self.logger.info(f"Inserted rows: {inserted_rows}")

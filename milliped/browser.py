@@ -1,12 +1,13 @@
 import time
 
 from functools import partial
+from urllib.parse import urljoin
 
 from bs4 import BeautifulSoup
 
 import milliped.constants as cst
 
-from milliped.utils import cut_url, get_logger
+from milliped.utils import get_all_links, get_logger, hash_string
 
 LOGGER = get_logger(__file__)
 
@@ -24,10 +25,8 @@ class Browser:
         of the next page to harvest.
     :param callable get_page_id: Function which shortens the URL into a
         unique ID, this is used when saving harvested pages.
-    :param class browse_set: Object to store a set of browsed web pages.
     :param class browse_queue: Object to store a queue of web pages to
         browse.
-    :param class harvest_set: Object to store a set of harvested web pages.
     :param class harvest_queue: Object to store a queue of web pages to
         parse.
     :param object download_manager: Object to manage downloading web pages.
@@ -46,12 +45,10 @@ class Browser:
         self,
         base_url,
         stop_test=None,
-        get_browsable=None,
-        get_harvestable=None,
-        get_page_id=None,
-        browse_set=None,
+        get_browsable=get_all_links,
+        get_harvestable=get_all_links,
+        get_page_id=hash_string,
         browse_queue=None,
-        harvest_set=None,
         harvest_queue=None,
         download_manager=None,
         html_parser="html.parser",
@@ -66,9 +63,7 @@ class Browser:
         self.get_harvestable = get_harvestable
         self.get_page_id = get_page_id
         self.soup_parser = soup_parser
-        self.browse_set = browse_set
         self.browse_queue = browse_queue
-        self.harvest_set = harvest_set
         self.harvest_queue = harvest_queue
         self.download_manager = download_manager
         self.harvest_store = harvest_store
@@ -99,6 +94,22 @@ class Browser:
         time.sleep(duration)
         self.pauses += 1
 
+    def retry_request(self, status_code):
+        """
+        Determines if a request should be retried based on its status code.
+
+        If the status code is None, does not retry.
+
+        :param int status_code: Request status code.
+        :returns (bool): True if request should be retried, else False.
+        """
+        if status_code is not None:
+            # 408 is "Read Timeout"
+            # 429 is "Too Many Requests"
+            if status_code >= 500 or status_code in (408, 429):
+                return True
+        return False
+
     def browse(self, initial=None):
         """
         Browse a website in a breadth-first search fashion, find pages to
@@ -111,9 +122,7 @@ class Browser:
         if not initial:
             initial = self.base_url
 
-        if initial not in self.browse_set:
-            self.browse_queue.enqueue(initial)
-            self.browse_set.add(initial)
+        self.browse_queue.enqueue(initial)
 
         while not self.browse_queue.is_empty:
             current = self.browse_queue.dequeue()
@@ -124,29 +133,31 @@ class Browser:
 
             self.pauses = 0
 
-            content = self.download_manager.download_page(url=current)
+            status_code, content = self.download_manager.download(url=current)
 
             self.download_manager.sleep()
 
-            # if download failed, push URL back to queue
-            if content is None:
-                self.browse_queue.enqueue(current)
+            # if page access is forbidden by robots.txt, continue
+            if status_code is None:
                 continue
 
-            # if download is forbidden, skip
-            if content == cst.FORBIDDEN:
+            # if download failed, push URL back to queue
+            if content is None:
+                self.logger.info(
+                    f"Failed to download {current} with status code "
+                    f"{status_code}"
+                )
+                if self.retry_request(status_code):
+                    self.browse_queue.re_enqueue(current)
                 continue
 
             self.logger.info("Parsing HTML code")
             soup = self.html_parser(content)
 
-            # get list of web links to harvest
+            # get pages to harvest
             for child in self.get_harvestable(soup):
-                if child in self.harvest_set:
-                    continue
-                self.logger.info(f"Found to harvest {cut_url(child)}")
-                self.harvest_set.add(child)
-                self.harvest_queue.enqueue(child)
+                # we join child with current to account for relative URLs
+                self.harvest_queue.enqueue(urljoin(current, child))
 
             # check if we're at the last page
             # if yes return, else get next page to browse
@@ -154,12 +165,10 @@ class Browser:
                 self.logger.info("Reached last page to browse, stopping")
                 return
 
+            # get pages to browse next
             for child in self.get_browsable(soup):
-                if child in self.browse_set:
-                    continue
-                self.logger.info(f"Found to browse next {cut_url(child)}")
-                self.browse_set.add(child)
-                self.browse_queue.enqueue(child)
+                # we join child with current to account for relative URLs
+                self.browse_queue.enqueue(urljoin(current, child))
 
         self.logger.info("Finished browsing")
 
@@ -179,20 +188,25 @@ class Browser:
 
             self.pauses = 0
 
-            content = self.download_manager.download_page(url=current)
+            status_code, content = self.download_manager.download(url=current)
 
             self.download_manager.sleep()
 
+            # if page access is forbidden by robots.txt, continue
+            if status_code is None:
+                continue
+
             # if download failed, push URL back to queue
             if content is None:
-                self.harvest_queue.enqueue(current)
+                self.logger.info(
+                    f"Failed to download {current} with status code "
+                    f"{status_code}"
+                )
+                if self.retry_request(status_code):
+                    self.browse_queue.re_enqueue(current)
                 continue
 
-            # if download is forbidden, skip
-            if content == cst.FORBIDDEN:
-                continue
-
-            self.logger.info(f"Storing {cut_url(current)}")
+            self.logger.info(f"Storing {current}")
             file_name = self.get_page_id(current)
             self.harvest_store.put(file_name, content)
 
@@ -210,7 +224,6 @@ class Browser:
             self.logger.info(f"Parsing {file_name}")
             soup = self.html_parser(content)
             parsed = self.soup_parser(soup)
-            inserted_rows = self.extract_store.write(parsed)
-            self.logger.info(f"Inserted {inserted_rows}")
+            self.extract_store.write(parsed)
 
         self.logger.info("Finished extracting")
