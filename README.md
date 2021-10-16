@@ -155,7 +155,7 @@ The `Browser` class can be instantiated with the following parameters:
 * `stop_browse`: function to determine if we should stop browsing (optional,
   default is None).
 * `get_harvestable`: function which returns the URL of the next
-  page to harvest (required).
+  page to harvest (optional, default returns all links).
 * `get_page_id`: function which shortens the URL into a unique ID,
   this is used when saving harvested pages (optional, default returns the MD5
   hash).
