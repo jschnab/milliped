@@ -17,10 +17,10 @@ class Browser:
     Automated web browser.
 
     :param str base_url: URL of the website to browse.
-    :param callable stop_test: Function to determine if we should stop
-        browsing.
     :param callable get_browsable: Function which returns the URL
         of the next page to browse.
+    :param callable stop_browse: Function to determine if we should stop
+        browsing.
     :param callable get_harvestable: Function which returns the URL
         of the next page to harvest.
     :param callable get_page_id: Function which shortens the URL into a
@@ -44,8 +44,8 @@ class Browser:
     def __init__(
         self,
         base_url,
-        stop_test=None,
         get_browsable=get_all_links,
+        stop_browse=None,
         get_harvestable=get_all_links,
         get_page_id=hash_string,
         browse_queue=None,
@@ -58,7 +58,7 @@ class Browser:
         logger=LOGGER,
     ):
         self.base_url = base_url
-        self.stop_test = stop_test
+        self.stop_browse = stop_browse
         self.get_browsable = get_browsable
         self.get_harvestable = get_harvestable
         self.get_page_id = get_page_id
@@ -161,7 +161,7 @@ class Browser:
 
             # check if we're at the last page
             # if yes return, else get next page to browse
-            if self.stop_test and self.stop_test(soup):
+            if self.stop_browse and self.stop_browse(soup):
                 self.logger.info("Reached last page to browse, stopping")
                 return
 
@@ -207,8 +207,8 @@ class Browser:
                 continue
 
             self.logger.info(f"Storing {current}")
-            file_name = self.get_page_id(current)
-            self.harvest_store.put(file_name, content)
+            page_id = self.get_page_id(current)
+            self.harvest_store.put(page_id, content)
 
         self.logger.info("Finished harvesting")
 
@@ -220,8 +220,8 @@ class Browser:
         self.logger.info("Start extracting")
 
         while len(self.harvest_store) > 0:
-            file_name, content = self.harvest_store.get()
-            self.logger.info(f"Parsing {file_name}")
+            page_id, content = self.harvest_store.get()
+            self.logger.info(f"Parsing {page_id}")
             soup = self.html_parser(content)
             parsed = self.soup_parser(soup)
             self.extract_store.write(parsed)

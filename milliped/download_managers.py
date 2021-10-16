@@ -40,6 +40,7 @@ class SimpleDownloadManager:
     :param float request_delay: Time to wait between requests. This value
         will be searched in robots.txt but will default to the user-defined
         value.
+    :param logging.Logger logger: Logger object.
     """
     def __init__(
         self,
@@ -79,7 +80,7 @@ class SimpleDownloadManager:
 
     def download(self, url):
         """
-        Download a web page and return a tuple (status code, response text).
+        Download a web page and return a tuple (status code, response content).
 
         If the request failed, the response text will be None. If the request
         was not sent, e.g. robots.txt indicates the page should not be
@@ -160,6 +161,7 @@ class TorDownloadManager:
         will be searched in robots.txt but will default to the user-defined
         value.
     :param str tor_password: Password for the Tor application.
+    :param logging.Logger logger: Logger object.
     """
     def __init__(
         self,
@@ -294,6 +296,7 @@ class FirefoxDownloadManager:
     :param float request_delay: Time to wait between requests. This value
         will be searched in robots.txt but will default to the user-defined
         value.
+    :param logging.Logger logger: Logger object.
     """
     def __init__(
         self,
