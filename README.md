@@ -156,7 +156,7 @@ The `Browser` class can be instantiated with the following parameters:
   default is None).
 * `get_harvestable`: function which returns the URL of the next
   page to harvest (optional, default returns all links).
-* `get_page_id`: function which shortens the URL into a unique ID,
+* `get_page_id`: function which converts the URL into a unique ID,
   this is used when saving harvested pages (optional, default returns the MD5
   hash).
 * `browse_queue`: object to store a queue of web pages to browse (required).
@@ -185,7 +185,8 @@ relative URL encountered by `Browser` will be prepended with `base_url`.
 
 #### `download_manager`
 
-Milliped defines download manager objects in the module `download_managers.py`.
+Built-in download manager objects are defined in the module
+`download_managers.py`.
 
 A `download_manager` object controls everything that deals with download of
 web pages:
@@ -197,27 +198,6 @@ web pages:
     * Retry strategy
     * Headers
     * Proxies
-
-The class `SimpleDownloadManager` is built on top of the Python library
-[requests](https://docs.python-requests.org/en/latest/) and provides basic
-functionality to download web pages. Its constructor has the following
-parameters:
-
-* `base_url`: URL of the website to browse (required).
-* `max_retries`: maximum number of times a request for a web page
-  is made before failing (optional, default 10).
-* `backoff_factor`: exponential backoff factor (optional, default 0.3).
-* `retry_on`: HTTP status code of responses that lead to a request
-  retry (optional, default (500, 502, 503, 504)).
-* `headers`: request headers (optional, default None).
-* `proxies`: list of proxies (optional, default None).
-* `timeout`: timeout for requests in seconds (optional, default 3).
-* `request_delay`: time in seconds to wait between requests. This value will be
-  searched in robots.txt but will default to the user-defined value (optional,
-  default 1).
-* `logger`: logger object from the Python standard library `logging` module
-  (optional, default logs messages to the file `browser.log` in the current
-  working directory).
 
 A `download_manager` object must have the following methods:
 
@@ -393,3 +373,78 @@ methods:
 
 * `write()`: takes a dictionary or sequence (list or tuple) of dictionaries
   containing extracted data then durably stores data.
+
+## Download managers
+
+Built-in download manager objects are defined in the module
+`download_managers.py`.
+
+A download manager controls everything that deals with download of
+web pages:
+
+* Which pages are downloaded:
+    * Does the file robot.txt allows it?
+    * Does the page start with `base_url`?
+* How pages are downloaded:
+    * Retry strategy
+    * Headers
+    * Proxies
+
+A download manager object must have the following methods:
+
+* `download()`: takes a URL string, downloads the web page, then returns a
+  tuple (status code, response content). The status code must be an integer and
+  the response content must be bytes.
+* `sleep()`: pause for the amount of time defined by `request_delay`.
+
+### SimpleDownloadManager
+
+The class `SimpleDownloadManager` is built on top of the Python library
+[requests](https://docs.python-requests.org/en/latest/) and provides basic
+functionality to download web pages. Its constructor has the following
+parameters:
+
+* `base_url`: URL of the website to browse (required).
+* `max_retries`: maximum number of times a request for a web page
+  is made before failing (optional, default 10).
+* `backoff_factor`: exponential backoff factor (optional, default 0.3).
+* `retry_on`: HTTP status code of responses that lead to a request
+  retry (optional, default (500, 502, 503, 504)).
+* `headers`: request headers (optional, default None).
+* `proxies`: list of proxies (optional, default None).
+* `timeout`: timeout for requests in seconds (optional, default 3).
+* `request_delay`: time in seconds to wait between requests. This value will be
+  searched in robots.txt but will default to the user-defined value (optional,
+  default 1).
+* `logger`: logger object from the Python standard library `logging` module
+  (optional, default logs messages to the file `browser.log` in the current
+  working directory).
+
+### TorDownloadManager
+
+The class `TorDownloadManager` is built on top of
+[tor](https://www.torproject.org/) and the the Python library
+[stem](https://stem.torproject.org/index.html) and provides basic
+functionality to download web pages. Refer to the documentation to install and
+configure theses libraries for your operating system.
+
+`TorDownloadManager`'s constructor has the following parameters:
+
+* `base_url`: URL of the website to browse (required).
+* `max_retries`: maximum number of times a request for a web page
+  is made before failing (optional, default 10).
+* `backoff_factor`: exponential backoff factor (optional, default 0.3).
+* `retry_on`: HTTP status code of responses that lead to a request
+  retry (optional, default (500, 502, 503, 504)).
+* `headers`: request headers (optional, default None).
+* `proxies`: list of proxies (optional, default None).
+* `timeout`: timeout for requests in seconds (optional, default 3).
+* `request_delay`: time in seconds to wait between requests. This value will be
+  searched in robots.txt but will default to the user-defined value (optional,
+  default 1).
+* `max_requests`: number of requests made before the Tor relay is rotated
+  (optional, default 50).
+* `tor_password`: password to authenticate with the Tor client (required).
+* `logger`: logger object from the Python standard library `logging` module
+  (optional, default logs messages to the file `browser.log` in the current
+  working directory).
