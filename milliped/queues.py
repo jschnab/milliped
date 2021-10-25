@@ -1,6 +1,7 @@
 from collections import deque
 
 import boto3
+import botocore
 
 import milliped.constants as cst
 
@@ -107,19 +108,86 @@ class LocalQueue:
 
 
 class SQSQueue:
-    def __init__(self, queue_url, wait_seconds=20, logger=LOGGER):
+    """
+    In-memory queue implemented using AWS SQS and DynamoDB to avoiding storing
+    duplicate items.
+
+    The "enqueue" method adds an item to the queue. The "dequeue" method
+    returns an item from the queue.
+
+    The "enqueue" method does not enqueue an item that was enqueued previously,
+    because it keeps items in a hash set. Thus this class can only process
+    items that are hashable.
+
+    To re-enqueue an item, once should use the "re_enqueue" method.
+
+    The following AWS resources must be configured before instantiating this
+    class:
+    - an AWS standard queue
+    - a DynamoDB table with a partition key of type string and name "id"
+    - permissions to send message, receive message and get queue attributes
+      from the relevant SQS queue, as well as put an item into the relevant
+      DynamoDB table
+    - the environment variables AWS_PROFILE and AWS_REGION to assume AWS
+      permissions
+
+    :param str queue_url: URL of the SQS queue.
+    :param str dynamo_table: Name of the DynamoDB table.
+    :param int wait_seconds: Number of seconds to use for long polling of the
+        SQS queue.
+    :param logging.Logger logger: Configured logger object.
+    """
+
+    def __init__(
+        self, queue_url, dynamo_table, wait_seconds=20, logger=LOGGER
+    ):
         self.queue_url = queue_url
+        self.name = self.queue_url.split("/")[-1]
+        self.dynamo_table = dynamo_table
         self.wait_seconds = wait_seconds
-        self.client = boto3.client("sqs")
+        self.logger = logger
+        self.sqs_client = boto3.client("sqs")
+        self.dynamo_client = boto3.client("dynamodb")
+        logger.info(f"SQS queue '{self.name}' ready")
 
     def __len__(self):
-        resp = self.client.get_queue_attributes(
-            QueueUrl=self.queue_url,
-            AttributeNames=["ApproximateNumberOfMessages"],
-        )
-        check_status(resp)
-        n = resp.get("Attributes", {}).get("ApproximateNumberOfMessages", 0)
-        return int(n)
+        n = 0
+        # SQS is highly distributed and only gives an approximate number of
+        # messages remaining in the queue, so we repeat the API call
+        for _ in range(3):
+            resp = self.sqs_client.get_queue_attributes(
+                QueueUrl=self.queue_url,
+                AttributeNames=["ApproximateNumberOfMessages"],
+            )
+            check_status(resp)
+            n = max(
+                n,
+                int(
+                    resp.get("Attributes", {}).get(
+                        "ApproximateNumberOfMessages", 0
+                    )
+                ),
+            )
+        return n
+
+    def __contains__(self, item):
+        try:
+            response = self.dynamo_client.put_item(
+                TableName=self.dynamo_table,
+                Item={"id": {"S": item}},
+                ConditionExpression="attribute_not_exists(#id)",
+                ExpressionAttributeNames={"#id": "id"},
+            )
+            check_status(response)
+        except botocore.exceptions.ClientError as e:
+            if (
+                e.response["Error"]["Code"]
+                == "ConditionalCheckFailedException"
+            ):
+                return True
+            else:
+                raise
+        return False
 
     def enqueue(self, item):
         """
@@ -127,7 +195,22 @@ class SQSQueue:
 
         :param str item: Item to push to add to the queue.
         """
-        response = self.client.send_message(
+        if item not in self:
+            self.logger.info(f"Enqueue to {self.name}: {item}")
+            response = self.sqs_client.send_message(
+                QueueUrl=self.queue_url, MessageBody=item,
+            )
+            check_status(response)
+
+    def re_enqueue(self, item):
+        """
+        Add an item to an SQS queue, even if this item was previously added.
+        This is useful to process items more than once.
+
+        :param str item: Item to add to the queue.
+        """
+        self.logger.info(f"Enqueue to {self.name}: {item}")
+        response = self.sqs_client.send_message(
             QueueUrl=self.queue_url, MessageBody=item,
         )
         check_status(response)
@@ -138,7 +221,8 @@ class SQSQueue:
 
         :returns (str): Message body of an item from the queue.
         """
-        response = self.client.receive_message(
+        self.logger.info(f"Polling {self.harvest}")
+        response = self.sqs_client.receive_message(
             QueueUrl=self.queue_url, WaitTimeSeconds=self.wait_seconds
         )
         check_status(response)
@@ -147,9 +231,10 @@ class SQSQueue:
             # we only receive one message at a time
             handle = messages[0].get("ReceiptHandle")
             body = messages[0].get("Body")
-            self.client.delete_message(
+            self.sqs_client.delete_message(
                 QueueUrl=self.queue_url, ReceiptHandle=handle,
             )
+            self.logger.info(f"Dequeue from {self.name}: {body}")
             return body
 
     @property

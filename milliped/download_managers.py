@@ -106,7 +106,6 @@ class SimpleDownloadManager:
                 proxies=self.current_proxy,
                 timeout=self.timeout,
             )
-            response.raise_for_status()
             self.logger.info("Download successful")
             return response.status_code, response.content
 
@@ -115,7 +114,7 @@ class SimpleDownloadManager:
             if self.proxies:
                 self.current_proxy = self.proxies.pop()
                 self.logger.info(f"Now using proxies: {self.current_proxy}")
-            return response.status_code, None
+            return 500, None
 
     def get_session(self):
         """
