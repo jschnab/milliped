@@ -109,7 +109,7 @@ class LocalQueue:
 
 class SQSQueue:
     """
-    In-memory queue implemented using AWS SQS and DynamoDB to avoiding storing
+    Queue implemented using AWS SQS and DynamoDB to avoiding storing
     duplicate items.
 
     The "enqueue" method adds an item to the queue. The "dequeue" method

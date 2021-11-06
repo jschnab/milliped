@@ -255,7 +255,7 @@ for harvesting. This queue object is passed to the `Browser` parameter
 `harvest_queue`. Like `browse_queue`, `harvest_queue` keeps track of which URLs
 it visited to avoid harvesting a page twice.
 
-### Browsing parameters
+### `Browser` parameters that control browsing
 
 #### `get_browsable`
 
@@ -275,7 +275,7 @@ keep track of which objects it already saw in the past and avoid storing again
 an item it has already seen, even if this object has since been removed from
 the queue.
 
-`browse_queue` must provide the following methods:
+The `browse_queue` object must provide the following methods:
 
 * `enqueue()`: add an object to the queue if this object has never been added
   to the queue before.
@@ -298,7 +298,7 @@ contents, and store them using the object passed to the `Browser` parameter
 string given by the function `get_page_id` so they can be uniquely identified.
 Harvested web pages will later be processed during the extract phase.
 
-### Harvesting parameters
+### `Browser` parameters that control harvesting
 
 #### `get_harvestable`
 
@@ -321,7 +321,7 @@ the queue.
   added to the queue. This is useful to process again an object that failed to
   be processed.
 
-`harvest_queue` must provide the following attributes:
+The `harvest_queue` object must provide the following attributes:
 
 * `is_empty`: returns `True` if the queue has no elements, or `False` if the
   queue has one or more elements.
@@ -351,7 +351,7 @@ retrieves web page contents from the `harvest_store` object, generates a
 the `BeautifulSoup` object into a dictionary, then stores extracted information
 using the `Browser.extract_store` object.
 
-### Extraction parameters
+### `Browser` parameters that control extraction
 
 #### `html_parser`
 
@@ -479,3 +479,67 @@ Refer to the documentation to install and configure Selenium and Geckodriver.
 * `logger`: logger object from the Python standard library `logging` module
   (optional, default logs messages to the file `browser.log` in the current
   working directory).
+
+## Queues
+
+The `Browser` class uses two queues to keep track of web pages during browsing
+and harvesting. These queues serve as the basis of the breadth-first search
+traversal of the website.
+
+Built-in queues are defined in the module `queues.py`.
+
+A queue object must provide the following methods:
+
+* `enqueue()`: takes an item and stores it in the queue if it has not been
+  previously enqueued. The item must be of a hashable type.
+* `re_enqueue()`: takes an item and stores it in the queue even if it has been
+  previously enqueued.
+* `dequeue()`: removes an item from the queue and returns it.
+* `__len__()`: returns the number of items remaining in the queue.
+* `__contains__()`: takes an item and returns `True` if the item is currently
+  present in the queue, otherwise `False`.
+
+A queue object must provide the following attributes:
+
+* `is_empty`: return `True` if there is at least one item in the queue,
+  otherwise `False`.
+
+To ensure that queued items are added only once, built-in queues store items
+in a set as well as in a queue, this is why items need to be hashable.
+
+#### `LocalQueue`
+
+The class `LocalQueue` uses `collections.deque` to store items, and the
+built-in `set` class to help store unique items.
+
+`LocalQueue` has the following parameters:
+
+* `name`: name of the queue, will be displayed in log messages.
+* `logger`: logger object from the Python standard library `logging` module
+  (optional, default logs messages to the file `browser.log` in the current
+  working directory).
+
+#### `SQSQueue`
+
+The class `SQSQueue` uses an AWS standard SQS queue to store items, and a
+DynamoDB table to help store unique items. By using an SQS queue, it is
+possible to run browsing and harvesting in parallel.
+
+The following AWS resources must be configured before instantiating this class:
+
+* an AWS standard queue
+* a DynamoDB table with a partition key of type string and name "id"
+* an IAM role to send and receive SQS messages, and get queue attributes, as
+  well as put an item into the DynamoDB table
+* the environment variables AWS_PROFILE and AWS_REGION configured to use the
+  IAM role described above
+
+SQS queues have a massive throughput, and no specific configuration is
+necessary to let browsing scale massively. On the other hand, DynamoDB
+throughput needs precise configuration. There are two read/write capacity
+modes: on demand and provisioned. You may use the on demand mode when you are
+setting up a new workload, and take advantage of an easier configuration, but
+watch costs carefully. Provisioned mode is cheaper but requests will be
+throttled if you go beyond the provisioned throughput. Read the
+[documentation](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/HowItWorks.ReadWriteCapacityMode.html)
+for more details.
