@@ -25,7 +25,7 @@ requests, using Tor, or using Selenium to harvest data from dynamic pages.
 ## How to install
 
 Using [pip](https://pypi.org/project/pip/) is the easiest way to install
-Millipede. If you are not sure you have `pip` installed, check by running:
+Milliped. If you are not sure you have `pip` installed, check by running:
 
 ```
 pip3 -V
