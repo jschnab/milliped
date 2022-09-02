@@ -37,14 +37,20 @@ def cut_url(url):
     return url
 
 
-def get_all_links(soup):
+def get_all_links(url=None, soup=None):
     """
     Get all links from a BeautifulSoup object.
 
+    :param str url: URL of the HTML page. This is currently ignored and only
+        present to satisfy signature requirements for this type of function.
     :param bs4.BeautifulSoup soup: Soup to parse links from.
     :returns (list): List of links.
     """
-    return [link.attrs["href"] for link in soup.find_all("a")]
+    if soup is not None:
+        return [
+            link.attrs["href"] for link in soup.find_all("a", {"href": True})
+        ]
+    return []
 
 
 def get_logger(name, level=cst.LOG_LEVEL, propagate=False, *args, **kwargs):
