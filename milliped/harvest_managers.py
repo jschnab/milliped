@@ -4,8 +4,10 @@ import os
 from collections import deque
 from zipfile import ZipFile, ZIP_BZIP2
 
+import boto3
+
 import milliped.constants as cst
-from milliped.utils import get_logger
+from milliped.utils import check_status, get_logger
 
 LOGGER = get_logger(__name__)
 
@@ -13,8 +15,11 @@ LOGGER = get_logger(__name__)
 class ZipHarvestStore:
     """
     Stores harvested web pages as compressed bzip2 archives.
+
     Archive size is capped.
+
     This class writes and reads compressed web pages, but does not delete them.
+
     If files that match the archive name prefix exist in the harvest directory
     when this class is instantiated, they will be added to this store.
 
@@ -102,3 +107,66 @@ class ZipHarvestStore:
         with ZipFile(archive_path, "r", compression=ZIP_BZIP2) as archive:
             data = archive.read(file_name).decode()
         return file_name, data
+
+
+class S3FlatHarvestStore:
+
+    def __init__(
+        self, bucket,
+        key_prefix,
+        data_encoding=cst.DEFAULT_DATA_ENCODING,
+        logger=LOGGER,
+        aws_profile=None,
+        aws_region=None,
+    ):
+        self.bucket = bucket
+        self.key_prefix = key_prefix.strip("/")
+        self.encoding = data_encoding
+        self.logger = logger
+        self.file_names = deque()
+        self.s3_client = boto3.Session(
+            profile_name=aws_profile, region_name=aws_region
+        ).client("s3")
+
+    def __len__(self):
+        return len(self.file_names)
+
+    def put(self, key, data):
+        """
+        Store an S3 object containing the data, under the specified key.
+
+        :param str key: S3 object key. Will be prefixed by the key prefixed
+            used when instantiating ``S3FlatHarvestStore``.
+        :param str|bytes data: Data to store. Can be HTML text of a harvested
+            web page or bytes of a data file.
+        :returns: None
+        """
+        if isinstance(data, str):
+            data = data.encode(encoding=self.encoding)
+        check_status(
+            self.s3_client.put_object(
+                Bucket=self.bucket,
+                Body=data,
+                Key=f"{self.key_prefix}/{key.strip('/')}",
+            )
+        )
+        self.file_names.appendleft(key)
+
+    def get(self):
+        """
+        Downloads an object from S3 and returns its data.
+
+        :returns (tuple): S3 object key (string) and object data (bytes).
+        """
+        key = self.file_names.pop()
+        try:
+            response = self.s3_client.get_object(
+                Bucket=self.bucket,
+                Key=f"{self.key_prefix}/{key}",
+            )
+            check_status(response)
+            return key, response["Body"].read()
+        except ValueError as e:
+            self.logger.error(f"Failed to get key '{key}': {e}")
+            self.file_names.appendleft(key)
+            return None, None
