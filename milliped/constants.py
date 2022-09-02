@@ -6,6 +6,7 @@ from pathlib import Path
 
 CONFIG_DIR = os.path.join(str(Path.home()), ".browsing")
 DEFAULT_CONFIG = os.path.join(CONFIG_DIR, "browser.conf")
+DEFAULT_DATA_ENCODING = "utf-8"
 LOG_LEVEL = logging.INFO
 LOG_HANDLERS = {
     "stream": logging.StreamHandler,
@@ -62,6 +63,13 @@ WAIT_PAGE_LOAD = 20
 CSV_EXTRACT_PATH = "extract.csv"
 JSON_EXTRACT_PATH = "extract.jsonl"
 QUEUE_NAME = "Queue"
+SKIP_PARSE_HTML_REGEX = (
+    ".*(\.(aiff|au|avi|bmp|gif|png|jpg|jpeg|jpe|mid|mpeg|mpg|mp3|ppt|pptx|"
+    "ram|ra|swf|pdf|doc|docx|txt|csv|json|odt|ods|ogg|zip|gz|bz2|tar|wav|wvma|"
+    "wpl|7z|arj|deb|pkg|rar|rpm|z|bin|dmg|iso|toast|vcd|dat|db|log|mdb|sav|"
+    "sql|xml|svg|ico|ps|psd|tiff|asp|aspx|cer|cfm|css|js|jsp|part|xls|xlsm|"
+    "xlsx|parquet|pq|sq3))$"
+    )  # noqa: W605
 
 # database constants
 SQLITE_ENGINE = "sqlite"

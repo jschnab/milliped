@@ -1,3 +1,4 @@
+import re
 import time
 
 from functools import partial
@@ -82,6 +83,17 @@ class Browser:
     def __repr__(self):
         return f"Browser(base_url={self.base_url})"
 
+    def urljoin(self, base, url):
+        """
+        Join url to base. This calls urllib.parse.urljoin after appending
+        '/' at the end of base, which is the desired behavior here.
+
+        :param str base: Base URL.
+        :param str url: Another URL.
+        :returns (str): Joined URLs.
+        """
+        return urljoin(f"{base.rstrip('/')}/", url)
+
     def pause(self):
         """
         Pause browser if no message is returned from the queue.
@@ -110,13 +122,16 @@ class Browser:
                 return True
         return False
 
-    def browse(self, initial=None):
+    def browse(self, initial=None, skip_parse_html=cst.SKIP_PARSE_HTML_REGEX):
         """
         Browse a website in a breadth-first search fashion, find pages to
         extract and store them in self.harvest_queue.
 
         :param str initial: URL where to start browsing (suffix to append
             to the base URL)
+        :param str skip_parse_html: Regular expression used to search a URL and
+            determine if BeautifulSoup should skip parsing the HTML tags. This
+            is useful to skip non-HTML pages, such as data files.
         """
         self.logger.info("Start browsing")
         if not initial:
@@ -126,6 +141,7 @@ class Browser:
 
         while not self.browse_queue.is_empty:
             current = self.browse_queue.dequeue()
+            self.logger.info(f"Current page: {current}")
             if not current:
                 self.logger.info("Empty message received from queue, pausing")
                 self.pause()
@@ -133,42 +149,52 @@ class Browser:
 
             self.pauses = 0
 
-            status_code, content = self.download_manager.download(url=current)
-
-            self.download_manager.sleep()
-
-            # if page access is forbidden by robots.txt, continue
-            if status_code is None:
-                continue
-
-            # if download failed, push URL back to queue
-            if content is None:
-                self.logger.info(
-                    f"Failed to download {current} with status code "
-                    f"{status_code}"
+            # determine if page should be downloaded and parsed or skipped
+            match = re.search(skip_parse_html, current)
+            if match is None:
+                status_code, content = self.download_manager.download(
+                    url=current
                 )
-                if self.retry_request(status_code):
-                    self.browse_queue.re_enqueue(current)
-                continue
+                self.download_manager.sleep()
 
-            self.logger.info("Parsing HTML code")
-            soup = self.html_parser(content)
+                # if page access is forbidden by robots.txt, continue
+                if status_code is None:
+                    continue
+
+                # if download failed, push URL back to queue
+                if content is None:
+                    self.logger.info(
+                        f"Failed to download {current} with status code "
+                        f"{status_code}"
+                    )
+                    if self.retry_request(status_code):
+                        self.browse_queue.re_enqueue(current)
+                    continue
+
+                self.logger.info("Parsing HTML code")
+                soup = self.html_parser(content)
+            else:
+                self.logger.info(
+                    f"Skipping HTML parsing because match: {match.group(1)}"
+                )
+                soup = None
 
             # get pages to harvest
-            for child in self.get_harvestable(soup):
+            for child in self.get_harvestable(current, soup):
                 # we join child with current to account for relative URLs
-                self.harvest_queue.enqueue(urljoin(current, child))
+                self.logger.info(f"Found harvestable: {child}")
+                self.harvest_queue.enqueue(self.urljoin(current, child))
 
             # check if we're at the last page
             # if yes return, else get next page to browse
-            if self.stop_browse and self.stop_browse(soup):
+            if self.stop_browse and self.stop_browse(current, soup):
                 self.logger.info("Reached last page to browse, stopping")
                 return
 
             # get pages to browse next
-            for child in self.get_browsable(soup):
+            for child in self.get_browsable(current, soup):
                 # we join child with current to account for relative URLs
-                self.browse_queue.enqueue(urljoin(current, child))
+                self.browse_queue.enqueue(self.urljoin(current, child))
 
         self.logger.info("Finished browsing")
 
