@@ -50,9 +50,12 @@ class SimpleDownloadManager:
         retry_on=cst.REQUEST_RETRY_ON,
         headers=None,
         proxies=None,
+        username=None,
+        password=None,
         timeout=cst.REQUEST_TIMEOUT,
         request_delay=cst.REQUEST_DELAY,
         logger=LOGGER,
+        ignore_robots_txt=False,
     ):
         self.base_url = base_url
         self.max_retries = max_retries
@@ -67,11 +70,13 @@ class SimpleDownloadManager:
         self.current_proxy = None
         if self.proxies:
             self.current_proxy = self.proxies.pop()
+        self.auth = (username, password)
         self.timeout = timeout
         self.logger = logger
         self.get_session()
 
         self.robot_parser = RobotParser(self.base_url, self.user_agent)
+        self.ignore_robots_txt = ignore_robots_txt
         self.request_delay = self.robot_parser.request_delay or request_delay
 
         self.logger.info("SimpleDownloadManager ready")
@@ -95,8 +100,8 @@ class SimpleDownloadManager:
             url = urljoin(self.base_url, url)
         self.logger.info(f"Downloading {url}")
 
-        if not self.robot_parser.can_fetch(url):
-            self.logger.info("Forbidden by robots.txt: {url}")
+        if not self.ignore_robots_txt and not self.robot_parser.can_fetch(url):
+            self.logger.info(f"Forbidden by robots.txt: {url}")
             return None, None
 
         try:
@@ -104,6 +109,7 @@ class SimpleDownloadManager:
                 url,
                 headers=self.headers,
                 proxies=self.current_proxy,
+                auth=self.auth,
                 timeout=self.timeout,
             )
             self.logger.info("Download successful")
